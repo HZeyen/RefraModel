@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include RefraModel *.py
+recursive-exclude RefraModel __pycache__
+recursive-exclude RefraModel *.pyc
+recursive-exclude RefraModel *.pyo
