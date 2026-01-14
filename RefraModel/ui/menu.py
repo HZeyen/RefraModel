@@ -17,8 +17,10 @@ from PyQt5.QtWidgets import (
     QPushButton,
 )
 from PyQt5.QtCore import Qt, QTimer
-from .dialogs import CustomDialog, InversionParametersDialog, GeometryDialog, BodyRegularizationDialog, ColorScaleDialog
+from .dialogs import CustomDialog, InversionParametersDialog, GeometryDialog,\
+    BodyRegularizationDialog, ColorScaleDialog
 from ..utils.file_io import FileIO
+from .. import version
 
 
 class Menu:
@@ -126,23 +128,29 @@ class Menu:
         # Help menu
         help_menu = self.menu_bar.addMenu("Help")
         about_action = QAction("About", self.menu_bar)
-        about_action.setShortcut("F1")
         about_action.triggered.connect(self.about_dialog)
         help_menu.addAction(about_action)
+
+        help_action = QAction("Help", self.menu_bar)
+        help_action.setShortcut("F1")
+        help_action.triggered.connect(self.help_dialog)
+        help_menu.addAction(help_action)
     
     def exit_application(self):
         """Exit the application, but block if editing is active"""
-        print("[DEBUG] exit_application called")
         if hasattr(self.parent, 'editing_in_progress'):
-            print(f"[DEBUG] editing_in_progress: {self.parent.editing_in_progress()}")
             if self.parent.editing_in_progress():
                 try:
                     QMessageBox.warning(self.parent, "Finish Editing", "Please finish or cancel the current editing operation (ENTER or ESC) before exiting.")
                 except Exception as e:
-                    print(f"[DEBUG] QMessageBox failed: {e}")
                     QMessageBox.warning(None, "Finish Editing", "Please finish or cancel the current editing operation (ENTER or ESC) before exiting.")
                 return
+        choice = QMessageBox.question(
+            self.parent, "Confirm", "Are you sure?", QMessageBox.Yes | QMessageBox.No)
+        if choice == QMessageBox.No:
+            return
         print("Exiting application.")
+        self.parent.close()
         QApplication.quit()
 
     # --- File actions ---
@@ -289,8 +297,9 @@ class Menu:
                 self.parent.line_manager.lines,
                 self.parent.scheme
             )
+            self.response = response
             # If geometry was created and user requested save, write calculated times to picks.sgt
-            if hasattr(self.parent, "save_geometry_to_picks") and self.parent.save_geometry_to_picks:
+            if hasattr(self.parent, "save_pick_file") and self.parent.save_pick_file:
                 try:
                     # Load tmp.sgt, update times, save as picks.sgt
                     if os.path.exists("tmp.sgt"):
@@ -316,7 +325,23 @@ class Menu:
                         if hasattr(self.parent, "statusBar"):
                             self.parent.statusBar().showMessage("Calculated times saved to picks.sgt", 3000)
                     # Reset flag
-                    self.parent.save_geometry_to_picks = False
+                        self.parent.save_geometry_to_picks = False
+                    elif os.path.exists("picks.sgt"):
+                        updated_scheme = tt.load("picks.sgt", verbose=False)
+                        updated_scheme.set('t', response)
+                        updated_scheme.save("picks.sgt")
+                        self.parent.set_scheme(updated_scheme)
+                        if hasattr(self.parent, "ax_dat") and hasattr(self.parent, "plot_picks"):
+                            try:
+                                self.parent.ax_dat.cla()
+                                self.parent.ax_dat.set_title("Data plot")
+                                self.parent.ax_dat.set_ylabel("Time [s]")
+                                self.parent.plot_picks(self.parent.ax_dat, updated_scheme["t"], marker='+')
+                            except Exception as e:
+                                print(f"Warning: Could not plot picks: {e}")
+                        if hasattr(self.parent, "statusBar"):
+                            self.parent.statusBar().showMessage("Calculated times saved to picks.sgt", 3000)
+                    
                 except Exception as e:
                     print(f"Warning: Could not save to picks.sgt: {e}")
             # if os.path.exists("picks.sgt"):
@@ -330,6 +355,7 @@ class Menu:
             new_scheme.set('t', response)
             new_scheme.save("forward_picks.sgt")
             self.parent.scheme.set("t", times)
+            self.scheme_f = self.parent.scheme.copy()
             # Plot calculated travel times
             if hasattr(self.parent, "plot_calculated_times"):
                 self.parent.plot_calculated_times(response)
@@ -345,14 +371,15 @@ class Menu:
                         # If no errors, use simple normalized misfit
                         chi2 = np.sum(((meas_tt - calc_tt) / meas_tt)**2) / len(meas_tt)
                     rms = np.sqrt(np.mean((meas_tt - calc_tt)**2))
+                    self.chi2_forward= chi2
+                    self.rms_forward = rms
                     # Update title with chi2 and RMS
                     if hasattr(self.parent, "update_data_plot_title"):
                         self.parent.update_data_plot_title(chi2, rms)
                         self.parent.fig.savefig("forward_model_plot.png", dpi=300)
             # Enable View Mesh menu item
             self.view_mesh_action.setEnabled(True)
-            # Note: Toggle Rays only enabled after inversion (rays not available for forward model)
-            # self.toggle_rays_action.setEnabled(True)
+            self.toggle_rays_action.setEnabled(True)
             if not hasattr(self.parent, "save_geometry_to_picks") or not self.parent.save_geometry_to_picks:
                 if hasattr(self.parent, "statusBar"):
                     self.parent.statusBar().showMessage("Forward model calculated successfully", 3000)
@@ -625,13 +652,14 @@ class Menu:
                 self.parent.body_regularization = {}
     
     def run_inversion(self):
+        from PyQt5.QtWidgets import QMessageBox
         try:
             import os
             import pygimli.physics.traveltime as tt
             
             # Check if inversion parameters are set
             if not hasattr(self.parent, "inversion_params"):
-                QMessageBox.information(self.parent, "Inversion", 
+                QMessageBox.warning(self.parent, "Inversion", 
                                        "Please set inversion parameters first (F8)")
                 return
             
@@ -752,25 +780,31 @@ class Menu:
                     self.parent.forward_model,
                     body_reg
                 )
+                self.vest = vest
+                self.mgr = mgr
+                self.scheme_inv = scheme.copy()
+                self.parent.polygone_fill_flag = False
                 
                 # Update scheme with filtered version (zero times removed)
                 self.parent.set_scheme(scheme)
                 
                 # Plot calculated travel times in upper canvas
                 if hasattr(self.parent, "plot_calculated_times") and hasattr(self.parent, "ax_dat"):
-                    calc_times = np.array(mgr.inv.response)
-                    self.parent.plot_calculated_times(calc_times)
+                    self.calc_times = np.array(mgr.inv.response)
+                    self.parent.plot_calculated_times(self.calc_times)
                     
                     # Update title with chi2 and RMS
                     chi2 = mgr.inv.chi2()
                     meas_tt = np.array(scheme["t"])
-                    rms = np.sqrt(np.mean((meas_tt - calc_times)**2))
+                    rms = np.sqrt(np.mean((meas_tt - self.calc_times)**2))
                     self.parent.update_data_plot_title(chi2, rms)
                 
                 # Update title with chi2 and RMS
                 chi2 = mgr.inv.chi2()
                 meas_tt = np.array(scheme["t"])
-                rms = np.sqrt(np.mean((meas_tt - calc_times)**2))
+                rms = np.sqrt(np.mean((meas_tt - self.calc_times)**2))
+                self.rms_inv = rms
+                self.chi2_inv = chi2
                 self.parent.update_data_plot_title(chi2, rms)
                 
                 # Plot inverted model in lower canvas
@@ -878,8 +912,44 @@ class Menu:
         QMessageBox.information(
             self.parent,
             "About Geological Model Builder",
-            "Geological Model Builder\nVersion 1.0\n© 2025 Your Name or Institution"
+            f"Geological Model Builder version {version.__version__}\n\n"
+            "© 2025 Hermann Zeyen, University Paris-Saclay"
         )
+
+    def help_dialog(self):
+        QMessageBox.information(
+            self.parent,
+            "Option of Geological Model Builder",
+            "Actions on bodies: 'Edit -> Body Editor or press B)\n"
+            "   Split body(ies) in two parts: left mouse and pull line\n"
+            "   Join two bodies: Right click into first body followed by "
+            "click into second body\n"
+            "                    Joint body has properties of first clicked body\n\n"
+            "Actions on nodes: 'Edit -> Node Editor or press N)\n"
+            "   Move node:    Left click near node and pull to new position\n"
+            "   Delete node:  Left click near node followed by keyboard DEL\n"
+            "   Add new node: Right click near edge where to add the node\n\n"
+            "Change properties: 'Edit -> Property Editor or press P)\n"
+            "   Click into body to call dialog box to define properties\n\n"
+            "Define picks to be used: 'Tools -> Select picks or press F4)\n\n"
+            "   ALL THESE EDITING OPTIONS MUST BE FINISHED PRESSING\n"
+                    "ENTER (accept) or ESC (reject all modifs since last call)"
+            "Run forward calculation: 'Tools -> Run Forward Model or press F4)\n\n"
+            "Run inversion:\n"
+            "   IMPORTANT: Before running an inversion, some parameters must be set:\n"
+            "              'Tools -> Inversion Parameters or press F8\n"
+            "   'Tools -> Run Inversion or press F9 or check box in dialog "
+            "box Inversion Parameters\n\n"
+            "Set Inversion parameters 'Tools -> Inversion Parameters or press F8\n"
+            "   You may start the inversion with a simple gradient model or\n"
+            "   using the actual interactive model.\n"
+            "   When using the gradient model, fill in the fields,\n"
+            "        check whether the inversion should be run immediately and accept\n"
+            "   When using the actual model, you may set specific regulatization\n"
+            "        for every single body\n"
+            "   SEE MANUAL FOR MORE INFORMATION\n\n"
+        )
+        
     
     def _plot_inverted_model_to_canvas(self, vest, mgr, parent):
         """Plot inverted model to the lower canvas with body contours."""

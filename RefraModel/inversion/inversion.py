@@ -36,6 +36,7 @@ class Inversion:
         """
         # Create timestamped folder for results
         now = datetime.now()
+        self.scheme = scheme
         timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
         self.inversion_folder = f"inversion_{timestamp}"
         os.makedirs(self.inversion_folder, exist_ok=True)
@@ -55,7 +56,6 @@ class Inversion:
         
         # Get model depth from geometry
         ymin = min(p["y"] for p in points)
-        ymax = 0.0
         xmin = min(p["x"] for p in points)
         xmax = max(p["x"] for p in points)
         
@@ -273,7 +273,7 @@ class Inversion:
                 z_weight = (vert_corr / horiz_corr) ** 2
                 print(f"\nAnisotropic smoothing: horizontal={horiz_corr:.1f}m, vertical={vert_corr:.1f}m")
                 print(f"  Calculated effective zWeight = {z_weight:.4f}")
-                print(f"  (Lower zWeight = less vertical smoothing, more horizontal preference)")
+                print("  (Lower zWeight = less vertical smoothing, more horizontal preference)")
             
             # Plot starting model
             self._plot_starting_model(self.inversion_folder, bodies)
@@ -296,28 +296,12 @@ class Inversion:
             }
             
             # Don't pass limits or startModel via invert_kwargs - already set via setRegularization
-            print(f"\nRunning inversion (limits enforced per region via setRegularization)...")
+            print("\nRunning inversion (limits enforced per region via setRegularization)...")
             
             vel_result = self.mgr.invert(**invert_kwargs)
             
-            # Extract and store ray paths for later plotting using PyGIMLi's method
-            self.ray_paths = []  # List of ray paths, each ray is a list of (x, y) points
-            try:
-                # Get ray paths from the manager
-                rays = self.mgr.getRayPaths()
-                print(f"Extracted {len(rays)} ray paths from inversion")
-                # Convert to our format (list of (x, y) tuples)
-                for ray in rays:
-                    ray_x = [pos[0] for pos in ray]
-                    ray_y = [pos[1] for pos in ray]
-                    if len(ray_x) > 0:
-                        self.ray_paths.append((ray_x, ray_y))
-            except Exception as e:
-                print(f"Could not extract ray paths: {e}")
-                self.ray_paths = []
-            
             # Inversion result is now complete
-            print(f"\nInversion complete:")
+            print("\nInversion complete:")
             print(f"  mesh_inv has {self.mesh_inv.cellCount()} cells")
             print(f"  mgr.paraDomain has {self.mgr.paraDomain.cellCount()} cells")
             print(f"  vel_result has {len(vel_result)} values")
@@ -338,7 +322,7 @@ class Inversion:
                 if velocities:
                     print(f"  Region {marker}: {len(velocities)} cells, min={min(velocities):.1f}, max={max(velocities):.1f}, mean={np.mean(velocities):.1f}, std={np.std(velocities):.1f} m/s")
                     if len(set(velocities)) == 1:
-                        print(f"    WARNING: All cells have identical velocity!")
+                        print("    WARNING: All cells have identical velocity!")
             
             # Show detail for customized regions
             if body_regularization:
@@ -372,9 +356,24 @@ class Inversion:
             self.mesh_inv = self.mgr.paraDomain
         
         print(f"\nInversion completed. Mesh has {self.mesh_inv.cellCount()} cells")
+            
+        # Extract and store ray paths for later plotting using PyGIMLi's method
+        self.ray_paths = []  # List of ray paths, each ray is a list of (x, y) points
+        try:
+            # Get ray paths from the manager
+            rays = self.mgr.getRayPaths()
+            print(f"Extracted {len(rays)} ray paths from inversion")
+            # Convert to our format (list of (x, y) tuples)
+            for ray in rays:
+                ray_x = [pos[0] for pos in ray]
+                ray_y = [pos[1] for pos in ray]
+                if len(ray_x) > 0:
+                    self.ray_paths.append((ray_x, ray_y))
+        except Exception as e:
+            print(f"Could not extract ray paths: {e}")
+            self.ray_paths = []
         
         # Create and save plots
-        self._plot_travel_times(scheme)
         self._plot_inverted_model(xmin, xmax)
         
         # Save inversion results
@@ -386,7 +385,6 @@ class Inversion:
     
     def _create_edges(self, plc, bodies, points, lines):
         """Add body boundary edges to PLC for mesh generation."""
-        from matplotlib.path import Path
         
         for body in bodies:
             # Get body polygon vertices
@@ -446,11 +444,6 @@ class Inversion:
                     'ymean': poly_array[:, 1].mean()
                 }
                 body_bounds.append(bounds)
-        
-        # Get mesh bounds
-        mesh_xmin = mesh.xmin()
-        mesh_xmax = mesh.xmax()
-        mesh_ymin = mesh.ymin()
         
         # First pass: assign cells inside bodies
         # Process bodies in reverse order so overlaps favor later bodies
@@ -556,7 +549,6 @@ class Inversion:
             Fixed velocity if type='fixed', None otherwise
         """
         reg_type = reg_params.get('type', 'free')
-        slowness = 1.0 / default_velocity
         
         print(f"  Region {marker}: {reg_type} regularization")
         
@@ -687,7 +679,7 @@ class Inversion:
         
         fig.savefig(os.path.join(self.inversion_folder, "starting_model.png"), dpi=150)
         plt.close(fig)
-        print("Starting model plot saved")
+        print("Starting model plot saved in routine 1")
     
     def _plot_travel_times(self, scheme):
         """Plot measured vs calculated travel times, separated by shot point."""
@@ -843,4 +835,4 @@ class Inversion:
         plt.tight_layout()
         fig.savefig(os.path.join(output_dir, "starting_model.png"), dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print("Starting model plot saved to starting_model.png")
+        print("Starting model plot saved to starting_model.png in routine 2")

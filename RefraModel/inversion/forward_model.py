@@ -2,7 +2,6 @@
 Forward modeling operations for geological model
 """
 import numpy as np
-import pygimli as pg
 from pygimli.physics import TravelTimeManager
 
 
@@ -13,6 +12,7 @@ class ForwardModel:
         self.ttmgr = None
         self.mesh = None
         self.response = None
+        self.new_forward = False
     
     def run_model(self, bodies, points, lines, scheme):
         """Run the forward model with the current geological model.
@@ -43,6 +43,7 @@ class ForwardModel:
         
         # Set data explicitly
         self.ttmgr.fop.setData(scheme)
+        self.ttmgr.fop.useRayPaths = True
         
         # Apply the mesh
         self.ttmgr.applyMesh(self.mesh, secNodes=2, ignoreRegionManager=True)
@@ -58,24 +59,31 @@ class ForwardModel:
         # Note: Ray extraction from forward model may not work with fop.response()
         # Rays are typically only available after inversion
         self.ray_paths = []  # List of ray paths, each ray is a list of (x, y) points
-        try:
-            # Get ray paths from the manager
-            rays = self.ttmgr.getRayPaths()
-            # Convert to our format (list of (x, y) tuples)
-            for ray in rays:
-                ray_x = [pos[0] for pos in ray]
-                ray_y = [pos[1] for pos in ray]
-                if len(ray_x) > 0:
-                    self.ray_paths.append((ray_x, ray_y))
-            if len(self.ray_paths) > 0:
-                print(f"Extracted {len(self.ray_paths)} ray paths from forward model")
-        except Exception:
-            # Ray extraction failed - this is expected for forward model
-            # Rays are only stored during inversion process
-            self.ray_paths = []
-            print("Note: Ray paths not available for forward model (only available after inversion)")
+        self.new_forward = True
         
         return self.response
+
+    def get_ray_paths_forward_model(self):
+        """Calculate ray paths from Dijkstra model.
+           Returns a dictionary with the ray paths. The coordinates of one ray
+           may be extracted as paths[nray][1][:,0] for the x coordinates and
+           paths[nray][1][:,1] for the y-coordinates.
+           paths[nray][0] contains the number of points that define the ray"""
+        paths = {}
+        npath = -1
+        so = np.array(self.scheme["s"], dtype=int)
+        rec = np.array(self.scheme["g"], dtype=int)
+        pos = np.array(self.scheme.sensorPositions())
+        for ns, ss in enumerate(so):
+            p = rec[ns]
+            recNode = self.ttmgr.fop.mesh().findNearestNode([pos[p, 0], pos[p,2]])
+            sourceNode = self.ttmgr.fop.mesh().findNearestNode([pos[ss, 0], pos[ss, 1]])
+
+            path = self.ttmgr.fop.dijkstra.shortestPath(sourceNode, recNode)
+            points = self.ttmgr.fop.mesh().positions(withSecNodes=True)[path].array()
+            npath += 1
+            paths[npath] = points
+        return paths
     
     def plot_mesh(self):
         """Plot the mesh with velocity model and markers."""

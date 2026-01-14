@@ -559,7 +559,8 @@ class GeometryDialog(QDialog):
         layout.addLayout(form)
         
         # Checkbox to save calculated times to file
-        self.save_to_file_check = QCheckBox("Store calculated travel times\nto file picks.sgt")
+        self.save_to_file_check = QCheckBox("Store calculated travel times\n"
+                                            "to file picks.sgt")
         self.save_to_file_check.setChecked(True)  # Checked by default
         layout.addWidget(self.save_to_file_check)
         

@@ -12,7 +12,6 @@ import os
 import copy
 import numpy as np
 import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Ellipse
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
@@ -67,7 +66,8 @@ class ModelBuilder(QMainWindow):
 
         # Plot mode state: False = interactive shown, True = inverted shown
         self.show_inverted = False
-        self.show_rays = False  # Ray plot visibility state
+        self.show_rays_f = False  # Ray plot visibility state
+        self.show_rays_i = False
         self.fig = None
         self.gs = None
         self.canvas = None
@@ -75,6 +75,9 @@ class ModelBuilder(QMainWindow):
         self.ax_dat = None
         self.ax = None
         self.ax_cb = None
+        self.polygone_fill_flag = True
+        self.save_pick_file = False
+
         # Picks / topography context
         self.scheme = None
         self.picks_flag = False
@@ -223,9 +226,14 @@ class ModelBuilder(QMainWindow):
                 # Show inverted model if available
                 if hasattr(self, 'inversion') and self.inversion and hasattr(self.inversion, 'vest') and self.inversion.vest is not None:
                     # Re-plot the inverted model
-#                    from .ui.menu import Menu
                     if hasattr(self, 'menu') and self.menu:
                         self.menu._plot_inverted_model_to_canvas(self.inversion.vest, self.inversion.mgr, self)
+                        self.polygone_fill_flag = False
+                    if self.show_rays_i:
+                        self.plot_rays_inversion()
+                    # self.inversion._plot_travel_times(self.menu.scheme_inv)
+                    self.plot_calculated_times(self.menu.calc_times)
+                    self.update_data_plot_title(self.menu.chi2_inv, self.menu.rms_inv)
                 else:
                     self.ax.set_title("Inverted model (not available)")
                     self.ax.set_xlabel("Distance [m]")
@@ -244,8 +252,6 @@ class ModelBuilder(QMainWindow):
                 
                 # Create colormap and normalizer
                 from matplotlib.colors import Normalize
-                import matplotlib.cm as cm
-                cmap = self.cmap
                 norm = Normalize(vmin=vmin, vmax=vmax)
                 
                 # Draw all bodies as filled polygons
@@ -258,13 +264,19 @@ class ModelBuilder(QMainWindow):
                     color = self.cmap(norm(velocity))
                     
                     # Create and add polygon patch
+                    self.polygone_fill_flag = True
                     polygon = Polygon(list(zip(x, y)), facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.8)
                     self.ax.add_patch(polygon)
+                if self.show_rays_f:
+                    self.plot_rays_forward()
+                self.plot_calculated_times(self.forward_model.response)
+                self.update_data_plot_title(self.menu.chi2_forward, self.menu.rms_forward)
+        # self.show_rays_i = False
+        # self.show_rays_f = False
         self.canvas.draw_idle()
     
     def toggle_ray_plot(self):
         """Toggle ray path visibility on the model plot."""
-        self.show_rays = not self.show_rays
         
         # Remove existing ray artists if any
         if hasattr(self, '_ray_artists'):
@@ -276,35 +288,64 @@ class ModelBuilder(QMainWindow):
             self._ray_artists = []
         
         # Add rays if enabled
-        if self.show_rays and self.ax is not None:
-            self._ray_artists = []
+        if self.ax is not None:
             
             # Determine which rays to plot based on current view mode
             if self.show_inverted:
-                # Plot inversion rays
-                if hasattr(self, 'inversion') and self.inversion and hasattr(self.inversion, 'ray_paths'):
-                    try:
-                        for ray_x, ray_y in self.inversion.ray_paths:
-                            line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
-                            self._ray_artists.append(line)
-                    except Exception as e:
-                        print(f"Could not draw inversion rays: {e}")
+                if not self.show_rays_i:
+                    self.plot_rays_inversion()
+                self.show_rays_i = not self.show_rays_i
             else:
+                if not self.show_rays_f:
                 # Plot forward model rays
-                if hasattr(self, 'forward_model') and self.forward_model and hasattr(self.forward_model, 'ray_paths'):
-                    try:
-                        for ray_x, ray_y in self.forward_model.ray_paths:
-                            line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
-                            self._ray_artists.append(line)
-                    except Exception as e:
-                        print(f"Could not draw forward model rays: {e}")
-        
+                    self.plot_rays_forward()
+                self.show_rays_f = not self.show_rays_f
+
         self.canvas.draw_idle()
-        
-        # Update status bar
-        if hasattr(self, 'statusBar'):
-            state = "shown" if self.show_rays else "hidden"
-            self.statusBar().showMessage(f"Ray paths {state}", 2000)
+
+    def plot_rays_inversion(self):
+        self._ray_artists = []
+        if hasattr(self, 'inversion') and self.inversion and hasattr(self.inversion, 'ray_paths'):
+            try:
+                for ray_x, ray_y in self.inversion.ray_paths:
+                    line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
+                    self._ray_artists.append(line)
+# Update status bar
+                if hasattr(self, 'statusBar'):
+                    state_i = "shown" if self.show_rays_i else "hidden"
+                    self.statusBar().showMessage(f"Ray paths {state_i}", 2000)
+            except Exception as e:
+                print(f"Could not draw inversion rays: {e}")
+
+    def plot_rays_forward(self):
+        if hasattr(self, 'forward_model') and self.forward_model:
+            try:
+                if self.forward_model.new_forward:
+                    reply = QMessageBox.warning(
+                        self, "Ray calculation",
+                        "Attention, calculating rays for forward model\n"
+                        "may take several minutes"
+                        "\n\nDo you want to continue?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.No
+                    )
+                    if reply == QMessageBox.No:
+                        return
+                    print("\nCalculate rays for forward model")
+                    self.forward_rays = self.forward_model.get_ray_paths_forward_model()
+                    self.forward_model.new_forward = False
+                for ray in self.forward_rays.items():
+                    ray_x = ray[1][:,0]
+                    ray_y = ray[1][:,1]
+                    line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
+                    self._ray_artists.append(line)
+# Update status bar
+                if hasattr(self, 'statusBar'):
+                    state_f = "shown" if self.show_rays_f else "hidden"
+                    self.statusBar().showMessage(f"Ray paths {state_f}", 2000)
+                print(f"{len(self.forward_rays)} rays of forward model plotted")
+            except Exception as e:
+                print(f"Could not draw forward model rays: {e}")
     
     def update_data_plot_title(self, chi2=None, rms=None):
         """Update data plot title with chi2 and RMS if available."""
@@ -626,34 +667,43 @@ class ModelBuilder(QMainWindow):
             return
         
         # Clear the model axis
+        xmin_plot = self.xmin
+        xmax_plot = self.xmax
         self.ax.cla()
         self.ax.set_xlabel("Distance [m]")
         self.ax.set_ylabel("Depth [m]")
-        self.ax.set_title("Interactive model")
+        if self.polygone_fill_flag:
+            self.ax.set_title("Interactive model")
         
         # Get velocity range across all bodies
-        vmin, vmax = self.body_manager.get_vel_limits()
+            vmin, vmax = self.body_manager.get_vel_limits()
         
         # Create colormap and normalizer
-        cmap = self.cmap
-        norm = Normalize(vmin=vmin, vmax=vmax)
+            cmap = self.cmap
+            norm = Normalize(vmin=vmin, vmax=vmax)
         
         # Plot each body as a polygon
-        for ib, body in enumerate(self.body_manager.bodies):
-            # Get polygon coordinates
-            x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
-            
-            # Get body velocity (first property)
-            velocity = body["props"][0] if body["props"] else vmin
-            color = cmap(norm(velocity))
-            
-            # Create and add polygon patch
-            polygon = Polygon(list(zip(x, y)), facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.8)
-            self.ax.add_patch(polygon)
+            for ib, body in enumerate(self.body_manager.bodies):
+                # Get polygon coordinates
+                x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
+                
+                # Get body velocity (first property)
+                velocity = body["props"][0] if body["props"] else vmin
+                color = cmap(norm(velocity))
+                
+                # Create and add polygon patch
+                polygon = Polygon(list(zip(x, y)), facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.8)
+                self.ax.add_patch(polygon)
         
         # Set axis limits - include sensor positions if available
-        xmin_plot = self.xmin
-        xmax_plot = self.xmax
+        else:
+            self.ax.set_title("Inverted model")
+            # self.inversion._plot_inverted_model(xmin_plot, xmax_plot)
+            self.menu._plot_inverted_model_to_canvas(self.menu.vest, self.menu.mgr, self)
+            for ib, body in enumerate(self.body_manager.bodies):
+                # Get polygon coordinates
+                x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
+                self.ax.plot(x, y, color='black', linewidth=0.5)
         
         if self.scheme is not None:
             try:
@@ -669,14 +719,15 @@ class ModelBuilder(QMainWindow):
         # self.ax.set_aspect('equal', adjustable='box')
         
         # Update colorbar in the right axis
-        self.ax_cb.cla()
-        self.ax_cb.yaxis.set_label_position("right")
-        self.ax_cb.yaxis.tick_right()
-        self.ax_cb.set_xticks([])
-        
-        # Draw colorbar
-        cb = ColorbarBase(self.ax_cb, cmap=cmap, norm=norm, orientation='vertical')
-        cb.set_label("Velocity [m/s]")
+        if self.polygone_fill_flag:
+            self.ax_cb.cla()
+            self.ax_cb.yaxis.set_label_position("right")
+            self.ax_cb.yaxis.tick_right()
+            self.ax_cb.set_xticks([])
+            
+            # Draw colorbar
+            cb = ColorbarBase(self.ax_cb, cmap=cmap, norm=norm, orientation='vertical')
+            cb.set_label("Velocity [m/s]")
         
         # Draw surface/topography line if available
         if isinstance(self.xtopo, (list, np.ndarray)) and len(self.xtopo) > 1 and isinstance(self.ytopo, (list, np.ndarray)) and len(self.ytopo) == len(self.xtopo):
@@ -1756,17 +1807,13 @@ class ModelBuilder(QMainWindow):
                         # First line: starts and ends somewhere
                         if first_sense > 0:
                             first_start = first_line["point1"]
-                            first_end = first_line["point2"]  # This is pid
                         else:
                             first_start = first_line["point2"]
-                            first_end = first_line["point1"]  # This is pid
                         
                         # Second line: starts at pid and ends somewhere
                         if second_sense > 0:
-                            second_start = second_line["point1"]  # This is pid
                             second_end = second_line["point2"]
                         else:
-                            second_start = second_line["point2"]  # This is pid
                             second_end = second_line["point1"]
                         
                         # The merged line should go from first_start to second_end
@@ -2066,12 +2113,10 @@ class ModelBuilder(QMainWindow):
                 dx = abs(xscr - x0s)
                 dy = abs(yscr - y0s)
                 if dx > dy:
-                    ydata = y0  # Lock Y, move X
                     yscr = y0s
                     event.ydata = y0
                     event.y = y0s
                 else:
-                    xdata = x0  # Lock X, move Y
                     xscr = x0s
                     event.xdata = x0
                     event.x = x0s
@@ -2439,8 +2484,6 @@ class ModelBuilder(QMainWindow):
         
         # Record which body line each crossing is on BEFORE insertion
         body = self.body_manager.bodies[body_idx]
-        first_body_line_idx = body["lines"].index(first_crossing[0]) if first_crossing[0] in body["lines"] else 0
-        last_body_line_idx = body["lines"].index(last_crossing[0]) if last_crossing[0] in body["lines"] else len(body["lines"]) - 1
 
         # Insert points at crossings (or use existing)
         crossing_pids = []
@@ -2939,15 +2982,12 @@ class ModelBuilder(QMainWindow):
         """Prompt for receiver/shot decimation based on base picks file, then apply reduction."""
         # Always derive counts from base picks on disk (prefer picks.dat, fallback to picks.sgt)
         base_scheme = None
-        base_file = None
         try:
             import pygimli.physics.traveltime as tt
             if os.path.exists("picks.dat"):
                 base_scheme = tt.load("picks.dat", verbose=True)
-                base_file = "picks.dat"
             elif os.path.exists("picks.sgt"):
                 base_scheme = tt.load("picks.sgt", verbose=True)
-                base_file = "picks.sgt"
         except Exception:
             base_scheme = None
         if base_scheme is None:

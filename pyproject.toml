@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reframodel"
-version = "2026.01.1"
+version = "2026.01.2"
 description = "Seismic refraction modeling and inversion tool"
 readme = "README.md"
 requires-python = ">=3.8"

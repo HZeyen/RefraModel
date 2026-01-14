@@ -82,6 +82,7 @@ def _create_geometry_and_times(window, geom_params):
             
             # Save to picks.sgt if requested
             if geom_params.get('save_to_file', False):
+                window.save_pick_file = True
                 scheme.save("picks.sgt")
                 print("Saved geometry and calculated times to picks.sgt")
         except Exception as e:
