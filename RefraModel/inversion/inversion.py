@@ -20,7 +20,8 @@ class Inversion:
         self.vest = None
         self.inversion_folder = None
     
-    def run_inversion(self, params, scheme, bodies, points, lines, forward_model, body_regularization=None):
+    def run_inversion(self, params, scheme, bodies, points, lines,
+                      forward_model, body_regularization=None, save_flag=True):
         """Run the inversion process with given parameters.
         
         Args:
@@ -35,16 +36,18 @@ class Inversion:
             forward_model: ForwardModel instance with mesh and velocity
         """
         # Create timestamped folder for results
-        now = datetime.now()
-        self.scheme = scheme
-        timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-        self.inversion_folder = f"inversion_{timestamp}"
-        os.makedirs(self.inversion_folder, exist_ok=True)
-        
-        print(f"Inversion results will be stored in: {self.inversion_folder}")
+        self.save_flag = save_flag
+        if save_flag:
+            now = datetime.now()
+            self.scheme = scheme
+            timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+            self.inversion_folder = f"inversion_{timestamp}"
+            os.makedirs(self.inversion_folder, exist_ok=True)
+            
+            print(f"Inversion results will be stored in: {self.inversion_folder}")
         
         # Save inversion parameters
-        self._save_parameters(params, bodies)
+            self._save_parameters(params, bodies)
         
         # Remove zero travel times (shot and receiver at same position)
         scheme = self._remove_zero_times(scheme)
@@ -52,7 +55,8 @@ class Inversion:
         # Create fresh TravelTimeManager (important: don't reuse from previous runs)
         # This ensures region vs cell parameterization is properly reset
         self.mgr = TravelTimeManager(scheme)
-        print("Created fresh TravelTimeManager")
+        if save_flag:
+            print("Created fresh TravelTimeManager")
         
         # Get model depth from geometry
         ymin = min(p["y"] for p in points)
@@ -64,10 +68,12 @@ class Inversion:
         
         if params['use_actual_model']:
             # Use actual model as starting model
-            print("\nCreating mesh with actual model as starting model")
+            if save_flag:
+                print("\nCreating mesh with actual model as starting model")
             
             # Create parametric mesh following body boundaries
-            plc = mt.createParaMeshPLC(scheme, paraDepth=-ymin, boundary=0)
+            plc = mt.createParaMeshPLC(scheme, paraDepth=-ymin, boundary=0,
+                                       paraDX=0.25)
             plc = self._create_edges(plc, bodies, points, lines)
             self.mesh_inv = mt.createMesh(plc, quality=32.5, area=10)
             self.mesh_inv = self._associate_regions(self.mesh_inv, bodies, points, lines)
@@ -80,20 +86,21 @@ class Inversion:
                 ib in body_regularization and body_regularization[ib].get('type') == 'fixed' 
                 for ib in range(len(bodies))
             )
-            print(f"DEBUG: has_fixed_regions = {has_fixed_regions}, body_regularization keys = {list(body_regularization.keys())}")
+            # print(f"DEBUG: has_fixed_regions = {has_fixed_regions}, body_regularization keys = {list(body_regularization.keys())}")
             
             # Use cell-based parameterization for proper cell-wise variation
             # We'll handle single velocity and fixed velocity by post-processing
-            print("Using cell-based parameterization (one parameter per cell)")
+            # print("Using cell-based parameterization (one parameter per cell)")
             self.mgr.setMesh(self.mesh_inv)
             self.mgr.fop.setMesh(self.mesh_inv, ignoreRegionManager=True)
-            print(f"  After setMesh: mgr.paraDomain has {self.mgr.paraDomain.cellCount()} cells")
+            # print(f"  After setMesh: mgr.paraDomain has {self.mgr.paraDomain.cellCount()} cells")
             
             # Clear any previous regularization settings
             self.mgr.inv.setRegularization(background=False)
             
             # Set starting model from forward model for each body
-            print("\nSetting starting velocities for regions:")
+            if self.save_flag:
+                print("\nSetting starting velocities for regions:")
             
             fixed_regions = []  # Track regions with fixed velocities
             for ib, body in enumerate(bodies):
@@ -102,16 +109,19 @@ class Inversion:
                 
                 # Apply body-specific regularization if specified
                 if ib in body_regularization:
-                    print(f"  Applying custom regularization for body {ib} (marker {marker})")
+                    if self.save_flag:
+                        print(f"  Applying custom regularization for body {ib} (marker {marker})")
                     result = self._apply_body_regularization(marker, velocity, body_regularization[ib])
                     if result is not None:
                         fixed_regions.append(result)
                 else:
                     # Default regularization - free inversion with body velocity as starting model
-                    print(f"  Region {marker}: velocity = {velocity:.1f} m/s (slowness = {1.0/velocity:.6f} s/m) - FREE")
+                    if self.save_flag:
+                        print(f"  Region {marker}: velocity = {velocity:.1f} m/s (slowness = {1.0/velocity:.6f} s/m) - FREE")
             
             # Set starting model for each cell
-            print("\nSetting cell-based starting model...")
+            if self.save_flag:
+                print("\nSetting cell-based starting model...")
             start_model = pg.Vector(self.mesh_inv.cellCount())
             for i, cell in enumerate(self.mesh_inv.cells()):
                 marker = cell.marker()
@@ -119,14 +129,16 @@ class Inversion:
                 body_velocity = bodies[marker-1]["props"][0]
                 start_model[i] = 1.0 / body_velocity
             self._cell_start_model = start_model
-            print(f"  Prepared starting model for {len(start_model)} cells")
+            if self.save_flag:
+                print(f"  Prepared starting model for {len(start_model)} cells")
             
             # Store fixed regions info for manual application after inversion
             self.fixed_regions_info = fixed_regions if fixed_regions else None
             
             # Setup per-body velocity constraints based on velocity_limit_percent
             velocity_limit_percent = params.get('velocity_limit_percent', 50.0)
-            print(f"\nSetting up velocity constraints (±{velocity_limit_percent:.1f}%):")
+            if self.save_flag:
+                print(f"\nSetting up velocity constraints (±{velocity_limit_percent:.1f}%):")
             
             # Create lower and upper bound vectors for all cells (in slowness)
             lower_bounds = pg.Vector(self.mesh_inv.cellCount())
@@ -214,9 +226,10 @@ class Inversion:
                         body_constraint_sources[body_idx] = "GLOBAL limits"
             
             # Print constraint sources for each body
-            print("\nConstraint sources:")
-            for body_idx, source in sorted(body_constraint_sources.items()):
-                print(f"  Body {body_idx} (Region {body_idx + 1}): {source}")
+            if self.save_flag:
+                print("\nConstraint sources:")
+                for body_idx, source in sorted(body_constraint_sources.items()):
+                    print(f"  Body {body_idx} (Region {body_idx + 1}): {source}")
             
             # Print summary of constraints
             for marker in range(1, len(bodies) + 1):
@@ -231,15 +244,16 @@ class Inversion:
                     # Check if bounds are very tight (constant velocity)
                     vel_range = max_vel - min_vel
                     percent_range = (vel_range / body_velocity) * 100.0
-                    
-                    if percent_range < 1.0:
-                        print(f"  Region {marker}: {body_velocity:.1f} m/s with bounds [{min_vel:.1f}, {max_vel:.1f}] m/s (±{percent_range:.2f}% - NEARLY CONSTANT!)")
-                    else:
-                        print(f"  Region {marker}: {body_velocity:.1f} m/s with bounds [{min_vel:.1f}, {max_vel:.1f}] m/s (±{percent_range:.1f}%)")
+                    if self.save_flag:
+                        if percent_range < 1.0:
+                            print(f"  Region {marker}: {body_velocity:.1f} m/s with bounds [{min_vel:.1f}, {max_vel:.1f}] m/s (±{percent_range:.2f}% - NEARLY CONSTANT!)")
+                        else:
+                            print(f"  Region {marker}: {body_velocity:.1f} m/s with bounds [{min_vel:.1f}, {max_vel:.1f}] m/s (±{percent_range:.1f}%)")
             
             # Apply per-body limits using setRegularization for each region
             # This will be the ONLY place we call setRegularization with limits
-            print("\nApplying velocity constraints per region using setRegularization:")
+            if self.save_flag:
+                print("\nApplying velocity constraints per region using setRegularization:")
             for marker in range(1, len(bodies) + 1):
                 body_idx = marker - 1
                 body_velocity = bodies[body_idx]["props"][0]
@@ -256,8 +270,9 @@ class Inversion:
                     # Set per-region limits and starting model
                     self.mgr.inv.setRegularization(marker, limits=[min_slow, max_slow], 
                                                   startModel=1.0/body_velocity)
-                    
-                    print(f"  Region {marker}: limits=[{min_slow:.6f}, {max_slow:.6f}] s/m ([{min_vel:.1f}, {max_vel:.1f}] m/s)")
+
+                    if self.save_flag:
+                        print(f"  Region {marker}: limits=[{min_slow:.6f}, {max_slow:.6f}] s/m ([{min_vel:.1f}, {max_vel:.1f}] m/s)")
             
             # Calculate zWeight for anisotropic smoothing if requested
             # PyGIMLi's geostatistical constraints don't work well with multiple regions,
@@ -276,15 +291,18 @@ class Inversion:
                 print("  (Lower zWeight = less vertical smoothing, more horizontal preference)")
             
             # Plot starting model
-            self._plot_starting_model(self.inversion_folder, bodies)
+            if save_flag:
+                self._plot_starting_model(self.inversion_folder, bodies)
             
             # Run inversion
-            print("\nRunning inversion with actual model...")
+            if self.save_flag:
+                print("\nRunning inversion with actual model...")
             
             # Set delta phi stopping criterion directly on inversion object (as percentage)
             dphi_min = params['max_delta_phi']
             self.mgr.inv.setDeltaPhiStop(dphi_min)
-            print(f"Set delta phi stop criterion to {dphi_min:.1f}%")
+            if self.save_flag:
+                print(f"Set delta phi stop criterion to {dphi_min:.1f}%")
             
             invert_kwargs = {
                 'verbose': True,
@@ -296,16 +314,18 @@ class Inversion:
             }
             
             # Don't pass limits or startModel via invert_kwargs - already set via setRegularization
-            print("\nRunning inversion (limits enforced per region via setRegularization)...")
+            if self.save_flag:
+                print("\nRunning inversion (limits enforced per region via setRegularization)...")
             
             vel_result = self.mgr.invert(**invert_kwargs)
             
             # Inversion result is now complete
-            print("\nInversion complete:")
-            print(f"  mesh_inv has {self.mesh_inv.cellCount()} cells")
-            print(f"  mgr.paraDomain has {self.mgr.paraDomain.cellCount()} cells")
-            print(f"  vel_result has {len(vel_result)} values")
-            print(f"  vel_result range: min={min(vel_result):.6f}, max={max(vel_result):.6f}")
+            if save_flag:
+                print("\nInversion complete:")
+                print(f"  mesh_inv has {self.mesh_inv.cellCount()} cells")
+                print(f"  mgr.paraDomain has {self.mgr.paraDomain.cellCount()} cells")
+                print(f"  vel_result has {len(vel_result)} values")
+                print(f"  vel_result range: min={min(vel_result):.6f}, max={max(vel_result):.6f}")
             
             # Note: Velocity limits are enforced DURING inversion via invert_kwargs['limits']
             # No post-processing clipping is done to preserve consistency with calculated travel times
@@ -313,16 +333,18 @@ class Inversion:
             self.vest = vel_result
             
             # Show final velocities for ALL regions (for debugging)
-            print("\nFinal velocities by region (all regions):")
+            if save_flag:
+                print("\nFinal velocities by region (all regions):")
             for marker in range(1, 6):  # Regions 1-5
                 velocities = []
                 for i, cell in enumerate(self.mesh_inv.cells()):
                     if cell.marker() == marker and i < len(self.vest):
                         velocities.append(self.vest[i])
-                if velocities:
-                    print(f"  Region {marker}: {len(velocities)} cells, min={min(velocities):.1f}, max={max(velocities):.1f}, mean={np.mean(velocities):.1f}, std={np.std(velocities):.1f} m/s")
-                    if len(set(velocities)) == 1:
-                        print("    WARNING: All cells have identical velocity!")
+                if save_flag:
+                    if velocities:
+                        print(f"  Region {marker}: {len(velocities)} cells, min={min(velocities):.1f}, max={max(velocities):.1f}, mean={np.mean(velocities):.1f}, std={np.std(velocities):.1f} m/s")
+                        if len(set(velocities)) == 1:
+                            print("    WARNING: All cells have identical velocity!")
             
             # Show detail for customized regions
             if body_regularization:
@@ -355,7 +377,8 @@ class Inversion:
             )
             self.mesh_inv = self.mgr.paraDomain
         
-        print(f"\nInversion completed. Mesh has {self.mesh_inv.cellCount()} cells")
+        if save_flag:
+            print(f"\nInversion completed. Mesh has {self.mesh_inv.cellCount()} cells")
             
         # Extract and store ray paths for later plotting using PyGIMLi's method
         self.ray_paths = []  # List of ray paths, each ray is a list of (x, y) points
@@ -374,12 +397,13 @@ class Inversion:
             self.ray_paths = []
         
         # Create and save plots
-        self._plot_inverted_model(xmin, xmax)
+        if save_flag:
+            self._plot_inverted_model(xmin, xmax)
         
         # Save inversion results
-        self._save_results(scheme)
+            self._save_results(scheme)
         
-        print(f"\nInversion finished. Results saved to {self.inversion_folder}")
+            print(f"\nInversion finished. Results saved to {self.inversion_folder}")
         
         return self.vest, self.mgr, scheme
     
@@ -423,10 +447,12 @@ class Inversion:
         body_paths = []
         body_bounds = []  # Store bounds for each body
         
-        print("\nBuilding body polygons for region assignment:")
+        if self.save_flag:
+            print("\nBuilding body polygons for region assignment:")
         for i, body in enumerate(bodies):
             velocity = body["props"][0] if body["props"] else 0
-            print(f"  Body {i} (will be region {i+1}): velocity = {velocity:.1f} m/s")
+            if self.save_flag:
+                print(f"  Body {i} (will be region {i+1}): velocity = {velocity:.1f} m/s")
             
             # Use the same polygon extraction as forward model
             poly_points = self._get_body_polygon(body, points, lines)
@@ -469,7 +495,8 @@ class Inversion:
         # Second pass: assign unassigned cells to nearest assigned cell
         unassigned_count = sum(1 for m in assigned_markers.values() if m is None)
         if unassigned_count > 0:
-            print(f"\n  Assigning {unassigned_count} cells using nearest assigned cell...")
+            if self.save_flag:
+                print(f"\n  Assigning {unassigned_count} cells using nearest assigned cell...")
             
             # Collect positions and markers of all assigned cells
             from scipy.spatial import cKDTree
@@ -506,10 +533,11 @@ class Inversion:
         for cell in mesh.cells():
             marker = cell.marker()
             marker_counts[marker] = marker_counts.get(marker, 0) + 1
-        
-        print("\nRegion assignment in mesh:")
-        for marker in sorted(marker_counts.keys()):
-            print(f"  Region {marker}: {marker_counts[marker]} cells")
+
+        if self.save_flag:
+            print("\nRegion assignment in mesh:")
+            for marker in sorted(marker_counts.keys()):
+                print(f"  Region {marker}: {marker_counts[marker]} cells")
         
         return mesh
     

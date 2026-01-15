@@ -257,7 +257,8 @@ class ModelBuilder(QMainWindow):
                 # Draw all bodies as filled polygons
                 for ib, body in enumerate(self.body_manager.bodies):
                     # Get polygon coordinates
-                    x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
+                    x, y = self.body_manager.get_polygon(
+                        ib, self.point_manager.points, self.line_manager.lines)
                     
                     # Get body velocity (first property)
                     velocity = body["props"][0] if body["props"] else vmin
@@ -265,12 +266,13 @@ class ModelBuilder(QMainWindow):
                     
                     # Create and add polygon patch
                     self.polygone_fill_flag = True
-                    polygon = Polygon(list(zip(x, y)), facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.8)
+                    polygon = Polygon(list(zip(x, y)), facecolor=color,
+                                      edgecolor='black', linewidth=0.5, alpha=0.8)
                     self.ax.add_patch(polygon)
                 if self.show_rays_f:
                     self.plot_rays_forward()
                 self.plot_calculated_times(self.forward_model.response)
-                self.update_data_plot_title(self.menu.chi2_forward, self.menu.rms_forward)
+                self.update_data_plot_title(self.menu.chi2_forward,self.menu.rms_forward)
         # self.show_rays_i = False
         # self.show_rays_f = False
         self.canvas.draw_idle()
@@ -305,7 +307,8 @@ class ModelBuilder(QMainWindow):
 
     def plot_rays_inversion(self):
         self._ray_artists = []
-        if hasattr(self, 'inversion') and self.inversion and hasattr(self.inversion, 'ray_paths'):
+        if hasattr(self, 'inversion') and self.inversion and\
+                hasattr(self.inversion, 'ray_paths'):
             try:
                 for ray_x, ray_y in self.inversion.ray_paths:
                     line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
@@ -321,22 +324,50 @@ class ModelBuilder(QMainWindow):
         if hasattr(self, 'forward_model') and self.forward_model:
             try:
                 if self.forward_model.new_forward:
-                    reply = QMessageBox.warning(
+                    QMessageBox.information(
                         self, "Ray calculation",
-                        "Attention, calculating rays for forward model\n"
-                        "may take several minutes"
-                        "\n\nDo you want to continue?",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.No
-                    )
-                    if reply == QMessageBox.No:
-                        return
+                        "Attention, calculating rays for forward model may "
+                        "take a minute or so.", QMessageBox.Ok)
                     print("\nCalculate rays for forward model")
-                    self.forward_rays = self.forward_model.get_ray_paths_forward_model()
+                    if hasattr(self, "inversion_params"):
+                        inv_param_bak = copy.deepcopy(self.inversion_params)
+                        inv_param_flag = True
+                    else:
+                        inv_param_flag = False
+                    inversion_bak = copy.deepcopy(self.inversion)
+                    self.inversion_params = {
+                        'use_actual_model': True,
+                        'v_top': 200.0,
+                        'v_bottom': 4000.0,
+                        'abort_chi2': True,
+                        'max_delta_phi': 2.0,
+                        'max_iterations': 1,
+                        'min_velocity': 100.0,
+                        'max_velocity': 10000.0,
+                        'initial_lambda': 1000000.0,
+                        'lambda_reduction': 1.,
+                        'z_smoothing': 1.,
+                        'velocity_limit_percent': 0.1,
+                    }
+                    # self.forward_rays = self.forward_model.get_ray_paths_forward_model()
                     self.forward_model.new_forward = False
-                for ray in self.forward_rays.items():
-                    ray_x = ray[1][:,0]
-                    ray_y = ray[1][:,1]
+                        
+                    vest, mgr, scheme = self.inversion.run_inversion(
+                        self.inversion_params, self.scheme,
+                        self.body_manager.bodies, self.point_manager.points,
+                        self.line_manager.lines, self.forward_model,
+                        save_flag=False)
+                    self.forward_rays = copy.deepcopy(self.inversion.ray_paths)
+                    self.inversion = copy.deepcopy(inversion_bak)
+                    if inv_param_flag:
+                        self.inversion_params = copy.deepcopy(inv_param_bak)
+                    else:
+                        del self.inversion_params
+
+                self._ray_artists = []
+                for ray_x, ray_y in self.forward_rays:
+                    # ray_x = ray[1][:,0]
+                    # ray_y = ray[1][:,1]
                     line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
                     self._ray_artists.append(line)
 # Update status bar

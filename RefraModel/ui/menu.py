@@ -141,12 +141,19 @@ class Menu:
         if hasattr(self.parent, 'editing_in_progress'):
             if self.parent.editing_in_progress():
                 try:
-                    QMessageBox.warning(self.parent, "Finish Editing", "Please finish or cancel the current editing operation (ENTER or ESC) before exiting.")
+                    QMessageBox.warning(self.parent, "Finish Editing",
+                                        "Please finish or cancel the current "
+                                        "editing operation (ENTER or ESC) "
+                                        "before exiting.")
                 except Exception as e:
-                    QMessageBox.warning(None, "Finish Editing", "Please finish or cancel the current editing operation (ENTER or ESC) before exiting.")
+                    QMessageBox.warning(None, "Finish Editing", 
+                                        "Please finish or cancel the current "
+                                        "editing operation (ENTER or ESC) "
+                                        "before exiting.")
                 return
         choice = QMessageBox.question(
-            self.parent, "Confirm", "Are you sure?", QMessageBox.Yes | QMessageBox.No)
+            self.parent, "Confirm", "Are you sure?",
+            QMessageBox.Yes | QMessageBox.No)
         if choice == QMessageBox.No:
             return
         print("Exiting application.")
@@ -745,15 +752,20 @@ class Menu:
                         return
             
             # Check if we have bodies
-            if not hasattr(self.parent, "body_manager") or len(self.parent.body_manager.bodies) == 0:
-                QMessageBox.warning(self.parent, "Inversion", "No bodies defined in the model")
+            if not hasattr(self.parent, "body_manager") or\
+                    len(self.parent.body_manager.bodies) == 0:
+                QMessageBox.warning(self.parent, "Inversion",
+                                    "No bodies defined in the model")
                 return
             
             # Check if forward model exists (for actual model case)
             if self.parent.inversion_params['use_actual_model']:
-                if not hasattr(self.parent, "forward_model") or self.parent.forward_model.mesh is None:
-                    QMessageBox.warning(self.parent, "Inversion", 
-                                       "Please run forward model first (F5) when using actual model as starting model")
+                if not hasattr(self.parent, "forward_model") or\
+                        self.parent.forward_model.mesh is None:
+                    QMessageBox.warning(
+                        self.parent, "Inversion",
+                        "Please run forward model first (F5) when using "
+                        "actual model as starting model")
                     return
             
             # Run inversion
@@ -769,7 +781,9 @@ class Menu:
                     print("\n*** Active body regularization settings: ***")
                     for body_idx, params in body_reg.items():
                         print(f"  Body {body_idx}: {params}")
-                    print("*** To clear these settings, run 'Modify regularization in specific bodies' and press ESC ***\n")
+                    print("*** To clear these settings, run 'Modify "
+                          "regularization in specific bodies' and press ESC "
+                          "***\n")
                 
                 vest, mgr, scheme = self.parent.inversion.run_inversion(
                     self.parent.inversion_params,
