@@ -286,12 +286,13 @@ def main():
             ymin = vals["ymin"]
             ymax = vals["ymax"]
             threshold = vals["threshold"]
-            prop_names = vals.get("prop_names", ["velocity"])
-            prop_values = vals.get("prop_values", [1500.0])
-            save_file = vals.get("save_file", "model.txt")
+            prop_names = vals.get("prop_names", ["v_p [m/s]"])
+            prop_values = vals.get("prop_values", [2000.0])
+            save_file = vals.get("save_file", "model_new.txt")
         else:
             save_file = "model.txt"
-        window = ModelBuilder(screens, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, threshold_pct=threshold)
+        window = ModelBuilder(screens, xmin=xmin, xmax=xmax, ymin=ymin,
+                              ymax=ymax, threshold_pct=threshold)
         window.model_save_path = save_file
         
         # Set topography data if available from picks file
@@ -300,22 +301,22 @@ def main():
             window.ytopo = ytopo_for_model
             window.topo_flag = True
         
-        # Always create the rectangular starting model in the no-model-file case
+# Always create the rectangular starting model in the no-model-file case
         window.start_model(prop_names=prop_names, prop_values=prop_values)
         
-        # If no picks file, create geometry now (required for modeling)
+# If no picks file, create geometry now (required for modeling)
+# If scheme does not exist show geometry creation dialog
         if scheme is None:
-            # Show geometry creation dialog
             from .ui.dialogs import GeometryDialog
             geom_dialog = GeometryDialog(xmin, xmax, window)
             if geom_dialog.exec_() == geom_dialog.Accepted:
                 geom_params = geom_dialog.get_parameters()
                 
-                # Create scheme and calculate times using forward model
+# Create scheme and calculate times using forward model
                 _create_geometry_and_times(window, geom_params)
                 scheme = window.scheme
         
-        # If picks were detected, attach scheme, plot picks, and integrate topography
+# If picks were detected, attach scheme, plot picks, and integrate topography
         if scheme is not None:
             window.set_scheme(scheme)
             try:

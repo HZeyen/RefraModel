@@ -10,18 +10,19 @@ class LineManager:
         self.lines = []
         self.nline = -1
     
-    def append_line(self, pt1, pt2, body=None):
+    def append_line(self, pt1, pt2, point_manager, body=None):
         """Append a line to the list"""
         self.nline += 1
-        
+        p1 = point_manager.points[pt1]
+        p2 = point_manager.points[pt2]
         line = {
             "point1": pt1,
             "point2": pt2,
             "bodies": body or [],
-            "topo": False,
-            "bottom": False,
-            "left": False,
-            "right": False
+            "topo": p1["topo"] and p2["topo"],
+            "bottom": p1["bottom"] and p2["bottom"],
+            "left": p1["left"] and p2["left"],
+            "right": p1["right"] and p2["right"]
         }
         
         self.lines.append(line)

@@ -26,7 +26,8 @@ class BodyManager:
             "cuts": [],
             "constraint": "free",
             "limits": [0., 10000.],
-            "corr_lengths": [0., 0.]
+            "corr_lengths": [0., 0.],
+            "top": 0.,
         }
         
         self.bodies.append(body)

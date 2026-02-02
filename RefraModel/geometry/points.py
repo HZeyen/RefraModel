@@ -26,7 +26,6 @@ class PointManager:
             yp = float(round(yp, 2))
         except Exception:
             pass
-        
         point = {
             "x": xp,
             "y": yp,

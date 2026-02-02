@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer
 import os
 import copy
+import time
 import numpy as np
 import matplotlib.cm as cm
 from matplotlib.patches import Polygon, Ellipse
@@ -53,8 +54,8 @@ class ModelBuilder(QMainWindow):
             eps_x, eps_y = 1.0, 1.0
         self.point_manager = PointManager(self.xmin, self.xmax, self.ymin, self.ymax, eps_x, eps_y)
         self.line_manager = LineManager()
-        self.forward_model = ForwardModel()
-        self.inversion = Inversion()
+        self.forward_model = ForwardModel(self)
+        self.inversion = Inversion(self)
         self.mesh_builder = MeshBuilder()
         # Path to save model on commits
         self.model_save_path = None
@@ -66,8 +67,8 @@ class ModelBuilder(QMainWindow):
 
         # Plot mode state: False = interactive shown, True = inverted shown
         self.show_inverted = False
-        self.show_rays_f = False  # Ray plot visibility state
-        self.show_rays_i = False
+        self.show_rays = False
+        self.forward_calculated = False
         self.fig = None
         self.gs = None
         self.canvas = None
@@ -229,11 +230,13 @@ class ModelBuilder(QMainWindow):
                     if hasattr(self, 'menu') and self.menu:
                         self.menu._plot_inverted_model_to_canvas(self.inversion.vest, self.inversion.mgr, self)
                         self.polygone_fill_flag = False
-                    if self.show_rays_i:
+                    if self.show_rays:
                         self.plot_rays_inversion()
                     # self.inversion._plot_travel_times(self.menu.scheme_inv)
                     self.plot_calculated_times(self.menu.calc_times)
-                    self.update_data_plot_title(self.menu.chi2_inv, self.menu.rms_inv)
+                    self.update_data_plot_title(self.menu.chi2_inv,
+                                                self.menu.rms_inv)
+                        
                 else:
                     self.ax.set_title("Inverted model (not available)")
                     self.ax.set_xlabel("Distance [m]")
@@ -241,40 +244,64 @@ class ModelBuilder(QMainWindow):
             else:
                 print("Toggle: plot interactive model")
                 # Show interactive model - redraw bodies with colors
+                self.polygone_fill_flag = True
+                self.plot_model()
                 self.ax.set_title("Interactive model")
                 self.ax.set_xlabel("Distance [m]")
                 self.ax.set_ylabel("Depth [m]")
                 self.ax.set_xlim(self.xmin, self.xmax)
                 self.ax.set_ylim(self.ymin, self.ymax)
                 
-                # Get velocity range across all bodies
-                vmin, vmax = self.body_manager.get_vel_limits()
+                # # Get velocity range across all bodies
+                # vmin, vmax = self.body_manager.get_vel_limits()
+                # V = 1./self.forward_model.slowness  # velocity is more intuitive than slowness
+           
+                # tpc = self.ax.tripcolor(self.forward_model.nodes[:, 0],
+                #                         -self.forward_model.nodes[:, 1],
+                #                         self.forward_model.triangles,
+                #                         V, cmap=self.cmap, edgecolors='gray')
                 
-                # Create colormap and normalizer
-                from matplotlib.colors import Normalize
-                norm = Normalize(vmin=vmin, vmax=vmax)
+                # # Create colormap and normalizer
+                # norm = Normalize(vmin=vmin, vmax=vmax)
                 
-                # Draw all bodies as filled polygons
-                for ib, body in enumerate(self.body_manager.bodies):
-                    # Get polygon coordinates
-                    x, y = self.body_manager.get_polygon(
-                        ib, self.point_manager.points, self.line_manager.lines)
+                # # Draw all bodies as filled polygons
+                # for ib, body in enumerate(self.body_manager.bodies):
+                #     # Get polygon coordinates
+                #     x, y = self.body_manager.get_polygon(
+                #         ib, self.point_manager.points, self.line_manager.lines)
+                #     self.ax.plot(x, y, "k")
                     
-                    # Get body velocity (first property)
-                    velocity = body["props"][0] if body["props"] else vmin
-                    color = self.cmap(norm(velocity))
+                    # # Get body velocity (first property)
+                    # velocity = body["props"][0] if body["props"] else vmin
+                    # color = self.cmap(norm(velocity))
                     
-                    # Create and add polygon patch
-                    self.polygone_fill_flag = True
-                    polygon = Polygon(list(zip(x, y)), facecolor=color,
-                                      edgecolor='black', linewidth=0.5, alpha=0.8)
-                    self.ax.add_patch(polygon)
-                if self.show_rays_f:
-                    self.plot_rays_forward()
-                self.plot_calculated_times(self.forward_model.response)
-                self.update_data_plot_title(self.menu.chi2_forward,self.menu.rms_forward)
-        # self.show_rays_i = False
-        # self.show_rays_f = False
+                    # # Create and add polygon patch
+                    # self.polygone_fill_flag = True
+                    # polygon = Polygon(list(zip(x, y)), facecolor=color,
+                    #                   edgecolor='black', linewidth=0.5, alpha=0.8)
+                    # self.ax.add_patch(polygon)
+                if self.show_rays and self.forward_calculated:
+                    if self.forward_calculated:
+                        self.plot_rays_forward(self.forward_rays)
+                    else:
+                        QMessageBox.warning(
+                            self, "Ray plot",
+                            "Attention, No forward model calculated so far\n"
+                            "Rays plotting cancelled.", QMessageBox.Ok)
+                if self.forward_calculated:
+                    self.plot_calculated_times(self.forward_model.response)
+                    self.update_data_plot_title(self.menu.chi2_forward,
+                                                self.menu.rms_forward)
+                else:
+                    if hasattr(self, '_calc_time_lines'):
+                        for line in self._calc_time_lines:
+                            try:
+                                line.remove()
+                            except:
+                                pass
+                    self._calc_time_lines = []
+                    self.update_data_plot_title()
+                    self.show_rays = False
         self.canvas.draw_idle()
     
     def toggle_ray_plot(self):
@@ -287,21 +314,21 @@ class ModelBuilder(QMainWindow):
                     artist.remove()
                 except Exception:
                     pass
-            self._ray_artists = []
+            del self._ray_artists
+        self._ray_artists = []
         
         # Add rays if enabled
         if self.ax is not None:
             
             # Determine which rays to plot based on current view mode
             if self.show_inverted:
-                if not self.show_rays_i:
+                if not self.show_rays:
                     self.plot_rays_inversion()
-                self.show_rays_i = not self.show_rays_i
             else:
-                if not self.show_rays_f:
+                if not self.show_rays and self.forward_calculated:
                 # Plot forward model rays
-                    self.plot_rays_forward()
-                self.show_rays_f = not self.show_rays_f
+                    self.plot_rays_forward(self.forward_rays)
+            self.show_rays = not self.show_rays
 
         self.canvas.draw_idle()
 
@@ -315,12 +342,12 @@ class ModelBuilder(QMainWindow):
                     self._ray_artists.append(line)
 # Update status bar
                 if hasattr(self, 'statusBar'):
-                    state_i = "shown" if self.show_rays_i else "hidden"
+                    state_i = "shown" if self.show_rays else "hidden"
                     self.statusBar().showMessage(f"Ray paths {state_i}", 2000)
             except Exception as e:
                 print(f"Could not draw inversion rays: {e}")
 
-    def plot_rays_forward(self):
+    def plot_rays_forward(self, rays):
         if hasattr(self, 'forward_model') and self.forward_model:
             try:
                 if self.forward_model.new_forward:
@@ -329,52 +356,18 @@ class ModelBuilder(QMainWindow):
                         "Attention, calculating rays for forward model may "
                         "take a minute or so.", QMessageBox.Ok)
                     print("\nCalculate rays for forward model")
-                    if hasattr(self, "inversion_params"):
-                        inv_param_bak = copy.deepcopy(self.inversion_params)
-                        inv_param_flag = True
-                    else:
-                        inv_param_flag = False
-                    inversion_bak = copy.deepcopy(self.inversion)
-                    self.inversion_params = {
-                        'use_actual_model': True,
-                        'v_top': 200.0,
-                        'v_bottom': 4000.0,
-                        'abort_chi2': True,
-                        'max_delta_phi': 2.0,
-                        'max_iterations': 1,
-                        'min_velocity': 100.0,
-                        'max_velocity': 10000.0,
-                        'initial_lambda': 1000000.0,
-                        'lambda_reduction': 1.,
-                        'z_smoothing': 1.,
-                        'velocity_limit_percent': 0.1,
-                    }
-                    # self.forward_rays = self.forward_model.get_ray_paths_forward_model()
-                    self.forward_model.new_forward = False
-                        
-                    vest, mgr, scheme = self.inversion.run_inversion(
-                        self.inversion_params, self.scheme,
-                        self.body_manager.bodies, self.point_manager.points,
-                        self.line_manager.lines, self.forward_model,
-                        save_flag=False)
-                    self.forward_rays = copy.deepcopy(self.inversion.ray_paths)
-                    self.inversion = copy.deepcopy(inversion_bak)
-                    if inv_param_flag:
-                        self.inversion_params = copy.deepcopy(inv_param_bak)
-                    else:
-                        del self.inversion_params
 
-                self._ray_artists = []
-                for ray_x, ray_y in self.forward_rays:
-                    # ray_x = ray[1][:,0]
-                    # ray_y = ray[1][:,1]
-                    line, = self.ax.plot(ray_x, ray_y, 'k-', lw=0.3, alpha=0.5)
-                    self._ray_artists.append(line)
+                nrays = 0
+                for r in rays:
+                    nrays += len(r)
+                    for ir in r:
+                        line, = self.ax.plot(ir[:, 0], ir[:, 1], "k-", lw=0.3, alpha=0.5)
+                        self._ray_artists.append(line)
 # Update status bar
                 if hasattr(self, 'statusBar'):
-                    state_f = "shown" if self.show_rays_f else "hidden"
+                    state_f = "shown" if self.show_rays else "hidden"
                     self.statusBar().showMessage(f"Ray paths {state_f}", 2000)
-                print(f"{len(self.forward_rays)} rays of forward model plotted")
+                print(f"{nrays} rays of forward model plotted")
             except Exception as e:
                 print(f"Could not draw forward model rays: {e}")
     
@@ -458,8 +451,8 @@ class ModelBuilder(QMainWindow):
                         parts = line.strip().split(",")
                         if len(parts) < 2:
                             continue
-                        # Normalize coordinates to 2 decimals
-                        x = float(round(float(parts[0]), 2)); y = float(round(float(parts[1]), 2))
+                        # Normalize coordinates to 3 decimals
+                        x = float(round(float(parts[0]), 3)); y = float(round(float(parts[1]), 3))
                         xmin = min(xmin, x); xmax = max(xmax, x)
                         ymin = min(ymin, y); ymax = max(ymax, y)
             self.xmin, self.xmax, self.ymin, self.ymax = xmin, xmax, ymin, ymax
@@ -495,7 +488,8 @@ class ModelBuilder(QMainWindow):
                 name = hvals[-1].lstrip() if len(hvals) >= 2 else f"Body_{ib}"
 
                 # Create body placeholder; lines and senses will be appended
-                self.body_manager.append_body([], [], prop_names, para_values=props, name=name)
+                self.body_manager.append_body([], [], prop_names,
+                                              para_values=props, name=name)
 
                 # Collect/ensure unique points
                 ptn = []  # indices of points in global list
@@ -517,7 +511,11 @@ class ModelBuilder(QMainWindow):
                     if found_index == -1:
                         # transform to screen for initial storage using normalized coords
                         xs, ys = self.ax.transData.transform((x, y)) if self.ax is not None else (x, y)
-                        self.point_manager.append_point(x, y, xs, ys, body=[ib], line=[])
+                        self.point_manager.append_point(x, y, xs, ys,
+                                                        body=[ib], line=[])
+                        yt = self._get_topo(x)
+                        if abs(y-yt) < 0.01:
+                            self.point_manager.points[-1]["topo"] = True
                         ptn.append(self.point_manager.npoint)
                     else:
                         ptn.append(found_index)
@@ -535,7 +533,8 @@ class ModelBuilder(QMainWindow):
                         if line["point2"] == pt1 and line["point1"] == pt2:
                             existing = il; reverse = True; break
                     if existing == -1:
-                        self.line_manager.append_line(pt1, pt2, [ib])
+                        self.line_manager.append_line(pt1, pt2,
+                                                      self.point_manager, [ib])
                         lin_idx = self.line_manager.nline
                     else:
                         lin_idx = existing
@@ -557,7 +556,7 @@ class ModelBuilder(QMainWindow):
             self.ax.set_xlim(self.xmin, self.xmax)
             self.ax.set_ylim(self.ymin, self.ymax)
             self.canvas.draw_idle()
-        
+        self.set_body_depth()
         # Plot the loaded model
         self.plot_model()
 
@@ -609,7 +608,7 @@ class ModelBuilder(QMainWindow):
 
         # Append 1 body with all 4 lines (sense=1 for all)
         self.body_manager.append_body([0, 1, 2, 3], [1, 1, 1, 1], prop_names, para_values=prop_values, name="Base")
-
+        self.set_body_depth()
         # Adjust axes limits
         if self.ax is not None:
             self.ax.set_xlim(self.xmin, self.xmax)
@@ -644,8 +643,8 @@ class ModelBuilder(QMainWindow):
             "yscreen": ys,
             "lines": line,
             "bodies": body,
-            "topo": np.isclose(yt, yp),
-            "bottom": np.isclose(yp, self.ymin),
+            "topo": abs(yt-yp) < 0.01,
+            "bottom": abs(yp-self.ymin) < 0.01,
             "left": xp <= self.xmin + 0.1,
             "right": xp >= self.xmax - 0.01,
         }
@@ -671,7 +670,11 @@ class ModelBuilder(QMainWindow):
     def _get_topo(self, xp):
         """Return topography y at x=xp. Stub: returns ymax (flat surface)."""
         yt = self._topo_y(xp)
-        return yt if yt is not None else self.ymax
+        if yt is None:
+            yt = self.ymax
+        else:
+            yt = np.round(yt, 3)
+        return yt
 
     def _topo_y(self, x):
         """Interpolate topography y at coordinate x if xtopo/ytopo available."""
@@ -693,7 +696,8 @@ class ModelBuilder(QMainWindow):
         return None
 
     def plot_model(self):
-        """Plot all bodies in the lower-left axis colored by velocity, and show colorbar in lower-right axis."""
+        """Plot all bodies in the lower-left axis colored by velocity,
+        and show colorbar in lower-right axis."""
         if self.ax is None or not self.body_manager.bodies:
             return
         
@@ -707,32 +711,71 @@ class ModelBuilder(QMainWindow):
             self.ax.set_title("Interactive model")
         
         # Get velocity range across all bodies
-            vmin, vmax = self.body_manager.get_vel_limits()
-        
-        # Create colormap and normalizer
-            cmap = self.cmap
-            norm = Normalize(vmin=vmin, vmax=vmax)
-        
-        # Plot each body as a polygon
-            for ib, body in enumerate(self.body_manager.bodies):
-                # Get polygon coordinates
-                x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
+            if len(self.body_manager.bodies[0]["props"]) == 1:
+                vmin, vmax = self.body_manager.get_vel_limits()
+            
+            # Create colormap and normalizer
+                cmap = self.cmap
+                norm = Normalize(vmin=vmin, vmax=vmax)
+            
+            # Plot each body as a polygon
+                for ib, body in enumerate(self.body_manager.bodies):
+                    # Get polygon coordinates
+                    x, y = self.body_manager.get_polygon(
+                        ib, self.point_manager.points, self.line_manager.lines)
+                    
+                    # Get body velocity (first property)
+                    velocity = body["props"][0] if body["props"] else vmin
+                    color = cmap(norm(velocity))
+                    
+                    # Create and add polygon patch
+                    polygon = Polygon(list(zip(x, y)), facecolor=color,
+                                      edgecolor='black', linewidth=0.5, alpha=0.8)
+                    self.ax.add_patch(polygon)
+            else:
+                cmap = self.cmap
+                vmax = -1000000.
+                vmin = 1000000.
+                for ib, body in enumerate(self.body_manager.bodies):
+                    x, y = self.body_manager.get_polygon(
+                        ib, self.point_manager.points, self.line_manager.lines)
+                    ymin, ymax = min(y), max(y)
+                    dy = ymax - ymin
+                    vmn = body["props"][0]
+                    vmx = body["props"][0] + body["props"][1]*dy
+                    vmin = min(vmin, vmn)
+                    vmax = max(vmax, vmx)
+                norm=Normalize(vmin=vmin, vmax=vmax)
+                for ib, body in enumerate(self.body_manager.bodies):
+                    x, y = self.body_manager.get_polygon(
+                        ib, self.point_manager.points, self.line_manager.lines)
+                    verts = list(zip(x, y))
+                    # Vertical extent
+                    ymin, ymax = min(y), max(y)
+                    xmin, xmax = min(x), max(x)
+                    dy = ymax - ymin
+                    vmax = body["props"][0]
+                    vmin = body["props"][0] + body["props"][1]*dy
+                    # Create vertical gradient
+                    gradient = np.linspace(vmin, vmax, 256).reshape(256, 1)
+                    im = self.ax.imshow(
+                        gradient, extent=[xmin, xmax, ymin, ymax],
+                        origin="lower", aspect="auto", cmap=cmap,
+                        norm=norm)
                 
-                # Get body velocity (first property)
-                velocity = body["props"][0] if body["props"] else vmin
-                color = cmap(norm(velocity))
-                
-                # Create and add polygon patch
-                polygon = Polygon(list(zip(x, y)), facecolor=color, edgecolor='black', linewidth=0.5, alpha=0.8)
-                self.ax.add_patch(polygon)
-        
-        # Set axis limits - include sensor positions if available
+                    # Polygon clip path
+                    patch = Polygon(verts, closed=True, facecolor="none",
+                                    edgecolor="black", linewidth=0.5, alpha=0.8)
+                    self.ax.add_patch(patch)
+                    im.set_clip_path(patch)
+
+# Set axis limits - include sensor positions if available
         else:
             self.ax.set_title("Inverted model")
-            # self.inversion._plot_inverted_model(xmin_plot, xmax_plot)
+# self.inversion._plot_inverted_model(xmin_plot, xmax_plot)
             self.menu._plot_inverted_model_to_canvas(self.menu.vest, self.menu.mgr, self)
+# Get polygon coordinates
             for ib, body in enumerate(self.body_manager.bodies):
-                # Get polygon coordinates
                 x, y = self.body_manager.get_polygon(ib, self.point_manager.points, self.line_manager.lines)
                 self.ax.plot(x, y, color='black', linewidth=0.5)
         
@@ -746,10 +789,10 @@ class ModelBuilder(QMainWindow):
         
         self.ax.set_xlim(xmin_plot, xmax_plot)
         self.ax.set_ylim(self.ymin, self.ymax)
-        # Don't use equal aspect - it changes xlim. Let matplotlib use the axis box size.
+# Don't use equal aspect - it changes xlim. Let matplotlib use the axis box size.
         # self.ax.set_aspect('equal', adjustable='box')
         
-        # Update colorbar in the right axis
+# Update colorbar in the right axis
         if self.polygone_fill_flag:
             self.ax_cb.cla()
             self.ax_cb.yaxis.set_label_position("right")
@@ -1199,7 +1242,6 @@ class ModelBuilder(QMainWindow):
             self.canvas.mpl_connect('button_press_event', self._on_prop_mouse_press),
             self.canvas.mpl_connect('key_press_event', self._on_prop_key_press),
         ]
-        
 
     def stop_property_edit_mode(self):
         if not self.property_edit_active:
@@ -1296,6 +1338,7 @@ class ModelBuilder(QMainWindow):
             self.stop_property_edit_mode()
         elif event.key in ('enter', 'return'):
             # Accept current changes and exit
+            self.forward_model.new_forward = True
             self._save_model_if_configured()
             self.stop_property_edit_mode()
 
@@ -1350,7 +1393,9 @@ class ModelBuilder(QMainWindow):
         if not self.node_edit_active:
             return
         if event.key in ('enter', 'return'):
+            self.forward_model.new_forward = True
             self._save_model_if_configured()
+            self.set_body_depth()
             self.stop_node_edit_mode()
         elif event.key in ('delete', 'backspace'):
             # Delete the selected point if not an original topo point
@@ -2061,7 +2106,9 @@ class ModelBuilder(QMainWindow):
         if not self.body_edit_active:
             return
         if event.key in ('enter', 'return'):
+            self.forward_model.new_forward = True
             self._save_model_if_configured()
+            self.set_body_depth()
             self.stop_body_edit_mode()
         elif event.key == 'escape':
             # Restore backup
@@ -2078,6 +2125,12 @@ class ModelBuilder(QMainWindow):
                 except Exception:
                     pass
             self.stop_body_edit_mode()
+
+    def set_body_depth(self):
+        for nb, body in enumerate(self.body_manager.bodies):
+            x, y = self.body_manager.get_polygon(nb, self.point_manager.points,
+                                                 self.line_manager.lines)
+            self.body_manager.bodies[nb]["top"] = max(y)
 
     def _on_body_mouse_press(self, event):
         if not self.body_edit_active:
@@ -3182,3 +3235,5 @@ class ModelBuilder(QMainWindow):
             except Exception:
                 pass
         self.set_scheme(new_scheme)
+
+        
