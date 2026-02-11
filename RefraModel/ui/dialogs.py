@@ -1,6 +1,7 @@
 """
 Custom dialogs for the application
 """
+import os
 from PyQt5.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -46,6 +47,7 @@ class StartParamsDialog(QDialog):
 
     def __init__(self, threshold_only=False, defaults=None, parent=None):
         super().__init__(parent)
+        from PyQt5.QtGui import QIntValidator
         self.setWindowTitle("Initial Parameters")
         self.threshold_only = threshold_only
         defaults = defaults or {}
@@ -82,7 +84,6 @@ class StartParamsDialog(QDialog):
 
 # Number of properties
             self.nprops_edit = QLineEdit(str(defaults.get("nprops", 1)))
-            from PyQt5.QtGui import QIntValidator
             self.nprops_edit.setValidator(QIntValidator(1, 10))
             self.nprops_edit.textChanged.connect(self._update_property_fields)
             self.form.addRow("Number of properties", self.nprops_edit)
@@ -97,6 +98,18 @@ class StartParamsDialog(QDialog):
 # Always show save-to file field
         self.save_file_edit = QLineEdit(str(defaults.get("save_file", "model.txt")))
         self.form.addRow("Save model to file", self.save_file_edit)
+
+# Always show number of threads
+        ncore = os.cpu_count()
+        self.cores_edit = QLineEdit(str(defaults.get("nthread", ncore)))
+        self.cores_edit.setValidator(QIntValidator(1, ncore))
+        self.form.addRow("Number of threads", self.cores_edit)
+
+# Always show number of secondary nodes
+        self.secondary_edit = QLineEdit(str(defaults.get("sec_nodes", 5)))
+        self.secondary_edit.setValidator(QIntValidator(1, 25))
+        self.form.addRow("Number of secondary nodes", self.secondary_edit)
+
 
         layout = QVBoxLayout()
         layout.addLayout(self.form)
@@ -169,6 +182,8 @@ class StartParamsDialog(QDialog):
             vals = {
                 "threshold": float(self.threshold_edit.text()),
                 "save_file": self.save_file_edit.text().strip() or "model.txt",
+                "nthread": int(self.cores_edit.text()),
+                "sec_nodes": int(self.secondary_edit.text())
             }
             if not self.threshold_only:
                 vals.update({

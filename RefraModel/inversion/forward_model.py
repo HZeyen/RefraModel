@@ -6,6 +6,7 @@ import time
 import gmsh
 from ttcrpy.tmesh import Mesh2d
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 class ForwardModel:
@@ -75,7 +76,9 @@ class ForwardModel:
         if self.mesh is None:
             print("No mesh to plot. Run forward model first.")
             return
-
+        self.plot_ttcr_model()
+        return
+    
         fig, axes = plt.subplots(2, 1, figsize=(12, 8))
 
 # Plot mesh with markers
@@ -294,7 +297,8 @@ class ForwardModel:
         gmsh.finalize()
 
         mesh = Mesh2d(nodes, self.triangles.astype(np.int64), method='SPM',
-                      n_secondary=25)
+                      n_secondary=self.parent.sec_nodes,
+                      n_threads=self.parent.nthread)
         mesh.to_vtk({'slowness': self.slowness}, 'forward')
         self.nodes = nodes
         return mesh, self.slowness
@@ -335,13 +339,17 @@ class ForwardModel:
         """Plot mesh and veolcities of forward model"""
         V = 1./self.slowness
 
-        fig = plt.figure(figsize=(10, 4))
+        fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111)
 
         # cmap = self.parent.cmap
         tpc = ax.tripcolor(self.nodes[:, 0], self.nodes[:, 1], self.triangles,
                            V, cmap='coolwarm', edgecolors='w')
-        cbar = plt.colorbar(tpc, ax=ax)
+        ax.set_xlim(self.parent.xmin, self.parent.xmax)
+        ax.set_ylim(self.parent.ymax, -self.parent.ymin)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="2%", pad=0.1)
+        cbar = plt.colorbar(tpc, cax=cax)
         cbar.ax.set_ylabel('Velocity', fontsize=14)
 
         ax.invert_yaxis()
@@ -352,5 +360,5 @@ class ForwardModel:
         plt.tight_layout()
 # Save plot of forward model to file within the working folder
         plt.savefig("forward_model_mesh.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
+        # plt.close(fig)
 

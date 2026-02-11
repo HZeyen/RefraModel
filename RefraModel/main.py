@@ -9,6 +9,7 @@ import numpy as np
 
 from .model_builder import ModelBuilder
 from .ui.dialogs import StartParamsDialog
+from .ui import Dialog_HZ
 
 
 def _create_geometry_and_times(window, geom_params):
@@ -16,7 +17,7 @@ def _create_geometry_and_times(window, geom_params):
     import pygimli.physics.traveltime as tt
     import numpy as np
     
-    # Create receivers
+# Create receivers
     rx_start = geom_params['rx_start']
     rx_spacing = geom_params['rx_spacing']
     rx_count = geom_params['rx_count']
@@ -26,29 +27,29 @@ def _create_geometry_and_times(window, geom_params):
     shot_spacing = geom_params['shot_spacing']
     shot_count = geom_params['shot_count']
     
-    # Build receiver positions
+# Build receiver positions
     rx_x = np.array([rx_start + i * rx_spacing for i in range(rx_count)])
     
-    # Build shot positions
+# Build shot positions
     shot_x = np.array([shot_start + i * shot_spacing for i in range(shot_count)])
     
-    # Combine all unique sensor positions (receivers + shots)
+# Combine all unique sensor positions (receivers + shots)
     all_x = np.unique(np.concatenate([rx_x, shot_x]))
     all_pos = np.column_stack([all_x, np.zeros_like(all_x)])
     
-    # Create DataContainer for traveltime data
+# Create DataContainer for traveltime data
     scheme = tt.DataContainer()
     scheme.registerSensorIndex('s')  # shot index
     scheme.registerSensorIndex('g')  # geophone/receiver index
     
-    # Add all unique sensor positions
+# Add all unique sensor positions
     for pos in all_pos:
         scheme.createSensor(pos)
     
-    # Create mapping from coordinates to sensor indices
+# Create mapping from coordinates to sensor indices
     coord_to_idx = {x: i for i, x in enumerate(all_x)}
     
-    # Build shot and receiver index arrays
+# Build shot and receiver index arrays
     shot_indices = []
     receiver_indices = []
     for shot in shot_x:
@@ -56,41 +57,94 @@ def _create_geometry_and_times(window, geom_params):
             shot_indices.append(coord_to_idx[shot])
             receiver_indices.append(coord_to_idx[rx])
     
-    # Set up data entries
+# Set up data entries
     n_data = len(shot_indices)
     scheme.resize(n_data)
     scheme.set('s', np.array(shot_indices, dtype=int))
     scheme.set('g', np.array(receiver_indices, dtype=int))
     
-    # Set scheme in window
+# Set scheme in window
     window.set_scheme(scheme)
     
-    # Calculate travel times using forward model if bodies exist
+# Calculate travel times using forward model if bodies exist
     if hasattr(window, "body_manager") and len(window.body_manager.bodies) > 0:
         try:
             scheme.set('t', np.zeros(n_data))  # Temporary zeros for forward model
-            response = window.forward_model.run_model(
+            response, forward_rays = window.forward_model.run_model(
                 window.body_manager.bodies,
                 window.point_manager.points,
                 window.line_manager.lines,
                 scheme
             )
             
-            # Update scheme with calculated times and errors
+# Update scheme with calculated times and errors
             scheme.set('t', response)
             scheme.set('err', np.ones(n_data) * 0.0001)  # Dummy errors (0.1 ms)
             
-            # Save to picks.sgt if requested
+# Save to picks.sgt if requested
             if geom_params.get('save_to_file', False):
                 window.save_pick_file = True
                 scheme.save("picks.sgt")
                 print("Saved geometry and calculated times to picks.sgt")
         except Exception as e:
             print(f"Warning: Could not calculate travel times: {e}")
-            # Create dummy times (zero) and errors
+# Create dummy times (zero) and errors
             scheme.set('t', np.zeros(n_data))
             scheme.set('err', np.ones(scheme.size()) * 0.0005)  # Dummy errors
 
+
+def get_config():
+    direction_start = np.array(["S", "SSW", "SW", "WSW", "W", "WNW",
+                                "NW", "NNW", "N", "NNE", "NE", "ENE",
+                                "E", "ESE", "SE", "SSE"], dtype=str)
+    direction_end = np.array(["N", "NNE", "NE", "ENE", "E", "ESE",
+                              "SE", "SSE", "S", "SSW", "SW", "WSW",
+                              "W", "WNW", "NW", "NNW"], dtype=str)
+    if os.path.exists("PyRefra.config") and\
+            not os.path.exists("line.config"):
+        os.rename('PyRefra.config', 'line.config')
+    if os.path.exists("line.config"):
+        with open("line.config", "r") as fi:
+            line_title = fi.readline().split("\n")[0]
+            print(f"Title: {line_title}")
+            dir_start = fi.readline().split("\n")[0]
+            config_flag = True
+        if len(np.where(direction_start == dir_start)[0]) > 0:
+            dir_end = direction_end[
+                    np.where(direction_start == dir_start)[0][0]]
+            print(f"Profile direction: {dir_start}-{dir_end}")
+        else:
+            print("Profile direction in file line.config incorrect: "
+                  + f"*{dir_start}*")
+            dir_start = ""
+            dir_end = ""
+    else:
+        working_dir = os.getcwd()
+        path = os.path.normpath(working_dir)
+        name = path.split(os.sep)[-1]
+        print("File line.config not found")
+        results, ok_button = Dialog_HZ.dialog(
+                ["General title (name of profile...)",
+                 "Geographic direction of profile start",
+                 direction_start], ["e", "l", "b"],
+                [name, None, None], "Line configuration")
+        if ok_button:
+            line_title = results[0]
+            dir_start = direction_start[int(results[2])]
+            dir_end = direction_end[int(results[2])]
+            config_flag = True
+            with open("line.config", "w") as fo:
+                fo.write(f"{line_title}\n")
+                fo.write(dir_start)
+            print(f"{line_title}\n"
+                  + f"Profile direction: {dir_start}-{dir_end}")
+        else:
+            line_title = name
+            dir_start = ""
+            dir_end = ""
+            config_flag = False
+    return line_title, dir_start, dir_end, config_flag
+    
 
 def main():
     """Main entry point"""
@@ -110,6 +164,9 @@ def main():
     ymin = -30.0
     ymax = 0.0
     threshold = 1.0
+
+# Check config file
+    line_title, dir_start, dir_end, config_flag = get_config()
 
     # First, attempt to read picks.sgt if it exists (used for plotting always, and as defaults when no model file)
     scheme = None
@@ -208,20 +265,28 @@ def main():
     ymin = -30.0
     ymax = 0.0
     threshold = 1.0
+    ncore = os.cpu_count()
+    nsecond = 5
     
     if model_file:
         # Ask only for threshold
         from os.path import basename
-        dlg = StartParamsDialog(threshold_only=True, defaults={"threshold": threshold, "save_file": basename(model_file)})
+        dlg = StartParamsDialog(threshold_only=True, defaults={
+            "threshold":threshold, "save_file": basename(model_file),
+            "nthread": ncore, "sec_nodes": nsecond})
         if dlg.exec_() != dlg.Accepted:
             return
         vals = dlg.values()
         if vals:
             threshold = vals["threshold"]
             save_file = vals.get("save_file", basename(model_file))
+            nthread = vals["nthread"]
+            sec_nodes = vals["sec_nodes"]
         else:
             from os.path import basename as _bn
             save_file = _bn(model_file)
+            nthread = ncore
+            sec_nodes = nsecond
         # Backup chosen model file
         try:
             if os.path.isfile(model_file):
@@ -229,7 +294,10 @@ def main():
         except Exception as e:
             print(f"Could not backup model file: {e}")
         # Initialize with degenerate extents to trigger auto-extents from file
-        window = ModelBuilder(screens, xmin=0.0, xmax=0.0, ymin=0.0, ymax=0.0, threshold_pct=threshold)
+        window = ModelBuilder(screens, xmin=0.0, xmax=0.0, ymin=0.0, ymax=0.0,
+                              threshold_pct=threshold, nthread=nthread,
+                              sec_nodes=sec_nodes, title=line_title,
+                              dir_start=dir_start, dir_end=dir_end)
         # Save path for edits
         window.model_save_path = save_file
         window.load_model_from_file(model_file)
@@ -275,6 +343,8 @@ def main():
                 "threshold": threshold,
                 "nprops": 1,
                 "save_file": "model.txt",
+                "nthread": ncore,
+                "sec_nodes": nsecond,
             },
         )
         if dlg.exec_() != dlg.Accepted:
@@ -289,10 +359,15 @@ def main():
             prop_names = vals.get("prop_names", ["v_p [m/s]"])
             prop_values = vals.get("prop_values", [2000.0])
             save_file = vals.get("save_file", "model_new.txt")
+            nthread = vals["nthread"]
+            sec_nodes = vals["sec_nodes"]
         else:
             save_file = "model.txt"
         window = ModelBuilder(screens, xmin=xmin, xmax=xmax, ymin=ymin,
-                              ymax=ymax, threshold_pct=threshold)
+                              ymax=ymax, threshold_pct=threshold,
+                              nthread=nthread, sec_nodes=sec_nodes,
+                              title=line_title, dir_start=dir_start,
+                              dir_end=dir_end)
         window.model_save_path = save_file
         
         # Set topography data if available from picks file
