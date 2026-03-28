@@ -46,175 +46,175 @@ class ForwardModel:
         self.parent.forward_calculated = True
         return self.response, self.rays
 
-    def get_ray_paths_forward_model(self):
-        """Calculate ray paths from Dijkstra model.
-           Returns a dictionary with the ray paths. The coordinates of one ray
-           may be extracted as paths[nray][1][:,0] for the x coordinates and
-           paths[nray][1][:,1] for the y-coordinates.
-           paths[nray][0] contains the number of points that define the ray"""
-        paths = {}
-        npath = -1
-        so = np.array(self.scheme["s"], dtype=int)
-        rec = np.array(self.scheme["g"], dtype=int)
-        pos = np.array(self.scheme.sensorPositions())
-        for ns, ss in enumerate(so):
-            p = rec[ns]
-            recNode = self.ttmgr.fop.mesh().findNearestNode([pos[p, 0], pos[p,2]])
-            sourceNode = self.ttmgr.fop.mesh().findNearestNode([pos[ss, 0], pos[ss, 1]])
+    # def get_ray_paths_forward_model(self):
+    #     """Calculate ray paths from Dijkstra model.
+    #        Returns a dictionary with the ray paths. The coordinates of one ray
+    #        may be extracted as paths[nray][1][:,0] for the x coordinates and
+    #        paths[nray][1][:,1] for the y-coordinates.
+    #        paths[nray][0] contains the number of points that define the ray"""
+    #     paths = {}
+    #     npath = -1
+    #     so = np.array(self.scheme["s"], dtype=int)
+    #     rec = np.array(self.scheme["g"], dtype=int)
+    #     pos = np.array(self.scheme.sensorPositions())
+    #     for ns, ss in enumerate(so):
+    #         p = rec[ns]
+    #         recNode = self.ttmgr.fop.mesh().findNearestNode([pos[p, 0], pos[p,2]])
+    #         sourceNode = self.ttmgr.fop.mesh().findNearestNode([pos[ss, 0], pos[ss, 1]])
 
-            path = self.ttmgr.fop.dijkstra.shortestPath(sourceNode, recNode)
-            points = self.ttmgr.fop.mesh().positions(withSecNodes=True)[path].array()
-            npath += 1
-            paths[npath] = points
-        return paths
+    #         path = self.ttmgr.fop.dijkstra.shortestPath(sourceNode, recNode)
+    #         points = self.ttmgr.fop.mesh().positions(withSecNodes=True)[path].array()
+    #         npath += 1
+    #         paths[npath] = points
+    #     return paths
 
-    def plot_mesh(self):
-        """Plot the mesh with velocity model and markers."""
-        import matplotlib.pyplot as plt
-        import pygimli as pg
+#     def plot_mesh(self):
+#         """Plot the mesh with velocity model and markers."""
+#         import matplotlib.pyplot as plt
+#         import pygimli as pg
 
-        if self.mesh is None:
-            print("No mesh to plot. Run forward model first.")
-            return
-        self.plot_ttcr_model()
-        return
+#         if self.mesh is None:
+#             print("No mesh to plot. Run forward model first.")
+#             return
+#         self.plot_ttcr_model()
+#         return
     
-        fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+#         fig, axes = plt.subplots(2, 1, figsize=(12, 8))
 
-# Plot mesh with markers
-        pg.show(self.mesh, markers=True, ax=axes[0], showMesh=True)
-        axes[0].set_title("Mesh with Markers")
-        axes[0].set_xlabel("Distance (m)")
-        axes[0].set_ylabel("Depth (m)")
+# # Plot mesh with markers
+#         pg.show(self.mesh, markers=True, ax=axes[0], showMesh=True)
+#         axes[0].set_title("Mesh with Markers")
+#         axes[0].set_xlabel("Distance (m)")
+#         axes[0].set_ylabel("Depth (m)")
 
-# Plot velocity model
-        if self.velocity_model is not None:
-            pg.show(self.mesh, data=self.velocity_model, ax=axes[1], 
-                   label="Velocity (m/s)", showMesh=False, cMap="jet")
-            axes[1].set_title("Velocity Model")
-            axes[1].set_xlabel("Distance (m)")
-            axes[1].set_ylabel("Depth (m)")
+# # Plot velocity model
+#         if self.velocity_model is not None:
+#             pg.show(self.mesh, data=self.velocity_model, ax=axes[1], 
+#                    label="Velocity (m/s)", showMesh=False, cMap="jet")
+#             axes[1].set_title("Velocity Model")
+#             axes[1].set_xlabel("Distance (m)")
+#             axes[1].set_ylabel("Depth (m)")
 
-        plt.tight_layout()
-        plt.show()
-        fig.savefig("forward_model_mesh.png", dpi=300)
+#         plt.tight_layout()
+#         plt.show()
+#         fig.savefig("forward_model_mesh.png", dpi=300)
 
-    def _create_mesh_from_model(self, bodies, points, lines, scheme):
-        """Create pygimli mesh from model geometry using polygon merging."""
-        import pygimli.meshtools as mt
+#     def _create_mesh_from_model(self, bodies, points, lines, scheme):
+#         """Create pygimli mesh from model geometry using polygon merging."""
+#         import pygimli.meshtools as mt
 
-# Create polygon for each body
-        polygons = []
-        for i, body in enumerate(bodies):
-            poly_points = self._get_body_polygon(body, points, lines)
-# Create closed polygon with body index as marker
-            if len(poly_points) >= 3:
-                poly = mt.createPolygon(poly_points, isClosed=True, marker=i+1)
-                polygons.append(poly)
+# # Create polygon for each body
+#         polygons = []
+#         for i, body in enumerate(bodies):
+#             poly_points = self._get_body_polygon(body, points, lines)
+# # Create closed polygon with body index as marker
+#             if len(poly_points) >= 3:
+#                 poly = mt.createPolygon(poly_points, isClosed=True, marker=i+1)
+#                 polygons.append(poly)
 
-        if not polygons:
-            raise ValueError("No valid body polygons created")
+#         if not polygons:
+#             raise ValueError("No valid body polygons created")
 
-# Merge all polygons into a single geometry
-        geom = polygons[0]
-        for poly in polygons[1:]:
-            geom += poly
+# # Merge all polygons into a single geometry
+#         geom = polygons[0]
+#         for poly in polygons[1:]:
+#             geom += poly
 
-# Create mesh from merged geometry
-        mesh = mt.createMesh(geom, quality=32, area=1.0, smooth=[1, 10])
+# # Create mesh from merged geometry
+#         mesh = mt.createMesh(geom, quality=32, area=1.0, smooth=[1, 10])
 
-        print(f"Mesh created: {mesh.cellCount()} cells from {len(polygons)} body polygons")
+#         print(f"Mesh created: {mesh.cellCount()} cells from {len(polygons)} body polygons")
 
-# Associate cells with bodies (handles overlaps and edge cases)
-        self._associate_regions(mesh, bodies, points, lines)
+# # Associate cells with bodies (handles overlaps and edge cases)
+#         self._associate_regions(mesh, bodies, points, lines)
 
-        return mesh
+#         return mesh
 
-    def _get_body_polygon(self, body, points, lines):
-        """Extract polygon vertices from body definition."""
-        poly_points = []
+#     def _get_body_polygon(self, body, points, lines):
+#         """Extract polygon vertices from body definition."""
+#         poly_points = []
         
-        # Get first point
-        line = lines[body["lines"][0]]
-        if body["sense"][0] > 0:
-            p = points[line["point1"]]
-            poly_points.append([p["x"], p["y"]])
-        else:
-            p = points[line["point2"]]
-            poly_points.append([p["x"], p["y"]])
+#         # Get first point
+#         line = lines[body["lines"][0]]
+#         if body["sense"][0] > 0:
+#             p = points[line["point1"]]
+#             poly_points.append([p["x"], p["y"]])
+#         else:
+#             p = points[line["point2"]]
+#             poly_points.append([p["x"], p["y"]])
         
-        # Walk through all lines adding end points
-        for j, line_idx in enumerate(body["lines"]):
-            line = lines[line_idx]
-            if body["sense"][j] > 0:
-                p = points[line["point2"]]
-            else:
-                p = points[line["point1"]]
-            poly_points.append([p["x"], p["y"]])
+#         # Walk through all lines adding end points
+#         for j, line_idx in enumerate(body["lines"]):
+#             line = lines[line_idx]
+#             if body["sense"][j] > 0:
+#                 p = points[line["point2"]]
+#             else:
+#                 p = points[line["point1"]]
+#             poly_points.append([p["x"], p["y"]])
         
-        return poly_points[:-1]  # Remove duplicate closing point
+#         return poly_points[:-1]  # Remove duplicate closing point
 
-    def _associate_regions(self, mesh, bodies, points, lines):
-        """Associate mesh cells with body markers using point-in-polygon test."""
-        from matplotlib.path import Path
+#     def _associate_regions(self, mesh, bodies, points, lines):
+#         """Associate mesh cells with body markers using point-in-polygon test."""
+#         from matplotlib.path import Path
         
-        # Build paths for all bodies
-        body_paths = []
-        for i, body in enumerate(bodies):
-            poly_points = self._get_body_polygon(body, points, lines)
-            if len(poly_points) >= 3:
-                body_paths.append((i, Path(poly_points)))
+#         # Build paths for all bodies
+#         body_paths = []
+#         for i, body in enumerate(bodies):
+#             poly_points = self._get_body_polygon(body, points, lines)
+#             if len(poly_points) >= 3:
+#                 body_paths.append((i, Path(poly_points)))
         
-        n_bodies = len(bodies)
-        background_marker = n_bodies + 1
+#         n_bodies = len(bodies)
+#         background_marker = n_bodies + 1
         
-        # Test each cell
-        for cell in mesh.cells():
-            center = cell.center()
-            cell_pt = [center.x(), center.y()]
+#         # Test each cell
+#         for cell in mesh.cells():
+#             center = cell.center()
+#             cell_pt = [center.x(), center.y()]
             
-            # Find which body contains this cell (last match wins for overlaps)
-            found = False
-            for body_idx, path in body_paths:
-                if path.contains_point(cell_pt):
-                    cell.setMarker(body_idx + 1)
-                    found = True
+#             # Find which body contains this cell (last match wins for overlaps)
+#             found = False
+#             for body_idx, path in body_paths:
+#                 if path.contains_point(cell_pt):
+#                     cell.setMarker(body_idx + 1)
+#                     found = True
             
-            if not found:
-                cell.setMarker(background_marker)
+#             if not found:
+#                 cell.setMarker(background_marker)
     
-    def _create_velocity_model(self, bodies, mesh):
-        """Create velocity model from body properties and markers."""
-        # Get markers for all cells
-        vp = np.array(mesh.cellMarkers(), dtype=float)
+#     def _create_velocity_model(self, bodies, mesh):
+#         """Create velocity model from body properties and markers."""
+#         # Get markers for all cells
+#         vp = np.array(mesh.cellMarkers(), dtype=float)
         
-        # Replace marker indices with actual velocities
-        if len(bodies[0]["props"]) == 1:
-            for i, body in enumerate(bodies):
-                body_marker = i + 1
-                vp[vp == body_marker] = body["props"][0]
-        else:
-            for i, body in enumerate(bodies):
-                body_marker = i + 1
-                zc = []
-                ic = []
-                for icell, v in enumerate(vp):
-                    if v != body_marker:
-                        continue
-                    ic.append(icell)
-                    zc.append(mesh.cellCenters()[icell].y())
-                zc = np.array(zc, dtype=float)
-                ic = np.array(ic, dtype=int)
-                zmax = zc.max()
-                for iv, icell in enumerate(ic):
-                    vp[icell] = body["props"][0] +(zmax-zc[iv])*body["props"][1]
-        # Handle background cells (marker = n_bodies + 1)
-        # Use velocity from first body as background
-        background_marker = len(bodies) + 1
-        if len(bodies) > 0:
-            vp[vp == background_marker] = bodies[0]["props"][0]
+#         # Replace marker indices with actual velocities
+#         if len(bodies[0]["props"]) == 1:
+#             for i, body in enumerate(bodies):
+#                 body_marker = i + 1
+#                 vp[vp == body_marker] = body["props"][0]
+#         else:
+#             for i, body in enumerate(bodies):
+#                 body_marker = i + 1
+#                 zc = []
+#                 ic = []
+#                 for icell, v in enumerate(vp):
+#                     if v != body_marker:
+#                         continue
+#                     ic.append(icell)
+#                     zc.append(mesh.cellCenters()[icell].y())
+#                 zc = np.array(zc, dtype=float)
+#                 ic = np.array(ic, dtype=int)
+#                 zmax = zc.max()
+#                 for iv, icell in enumerate(ic):
+#                     vp[icell] = body["props"][0] +(zmax-zc[iv])*body["props"][1]
+#         # Handle background cells (marker = n_bodies + 1)
+#         # Use velocity from first body as background
+#         background_marker = len(bodies) + 1
+#         if len(bodies) > 0:
+#             vp[vp == background_marker] = bodies[0]["props"][0]
         
-        return vp
+#         return vp
 
     def create_ttcr_mesh(self):
         """ Create a gmsh and vtk mesh together with the velocities and
@@ -345,18 +345,20 @@ class ForwardModel:
         # cmap = self.parent.cmap
         tpc = ax.tripcolor(self.nodes[:, 0], self.nodes[:, 1], self.triangles,
                            V, cmap='coolwarm', edgecolors='w')
+        ax.set_xlabel('Distance [m]', fontsize=14)
+        ax.set_ylabel('Depth [m]', fontsize=14)
+        ax.set_title(f"{self.parent.title}: Formard model mesh")
+        self.parent.direction_plot(ax)
         ax.set_xlim(self.parent.xmin, self.parent.xmax)
         ax.set_ylim(self.parent.ymax, -self.parent.ymin)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="2%", pad=0.1)
         cbar = plt.colorbar(tpc, cax=cax)
-        cbar.ax.set_ylabel('Velocity', fontsize=14)
+        cbar.ax.set_ylabel('Velocity [m/s]', fontsize=14)
 
         ax.invert_yaxis()
         ax.set_aspect('equal', 'box')
 
-        plt.xlabel('Distance', fontsize=14)
-        plt.ylabel('Depth', fontsize=14)
         plt.tight_layout()
 # Save plot of forward model to file within the working folder
         plt.savefig("forward_model_mesh.png", dpi=300, bbox_inches='tight')

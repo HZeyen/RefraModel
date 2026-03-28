@@ -719,6 +719,8 @@ class BodyRegularizationDialog(QDialog):
             "\n0% means use global min/max velocity limits.")
         params_layout.addRow("Limit velocity to ± x%\n(0=use global limits):",
                              self.velocity_limit_edit)
+        self.params_group.setLayout(params_layout)
+        layout.addWidget(self.params_group)
 
 # # Anisotropic smoothing
 #         params_layout.addRow(QLabel(""))

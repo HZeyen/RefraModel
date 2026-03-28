@@ -111,11 +111,11 @@ class Menu:
         self.toggle_rays_action.setEnabled(False)  # Initially disabled until forward model or inversion
         view_menu.addAction(self.toggle_rays_action)
 
-        self.view_mesh_action = QAction("View Mesh", self.menu_bar)
-        self.view_mesh_action.setShortcut("Ctrl+M")
-        self.view_mesh_action.triggered.connect(self.view_mesh)
-        self.view_mesh_action.setEnabled(False)  # Initially disabled until forward model
-        view_menu.addAction(self.view_mesh_action)
+        # self.view_mesh_action = QAction("View Mesh", self.menu_bar)
+        # self.view_mesh_action.setShortcut("Ctrl+M")
+        # self.view_mesh_action.triggered.connect(self.view_mesh)
+        # self.view_mesh_action.setEnabled(False)  # Initially disabled until forward model
+        # view_menu.addAction(self.view_mesh_action)
 
         view_menu.addSeparator()
 
@@ -406,7 +406,7 @@ class Menu:
                         self.parent.fig.savefig("forward_model_plot.png",
                                                 dpi=300)
 # Enable View Mesh menu item
-            self.view_mesh_action.setEnabled(True)
+            # self.view_mesh_action.setEnabled(True)
             self.toggle_rays_action.setEnabled(True)
             if not hasattr(self.parent, "save_geometry_to_picks") or\
                     not self.parent.save_geometry_to_picks:
@@ -1121,11 +1121,12 @@ class Menu:
 
 # Create chi2 plot window
         fig, ax = plt.subplots(figsize=(8, 6))
-        iterations = np.arange(len(chi_history)) + 1
+        iterations = np.arange(len(chi_history))
         ax.plot(iterations, np.log10(chi_history), 'b-o', markersize=6)
         ax.set_xlabel("Iteration #")
         ax.set_ylabel("log₁₀(Chi²)")
         ax.set_title(f"Chi² Evolution (Final Chi²: {chi_history[-1]:.3f})")
+        ax.set_xlim(0, len(chi_history)-1)
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
 
@@ -1155,7 +1156,7 @@ class Menu:
 
         layout.addWidget(QLabel("<b>Inversion Results:</b>"))
         layout.addWidget(QLabel(f"Final Chi²: {chi_history[-1]:.3f}"))
-        layout.addWidget(QLabel(f"Total iterations: {len(chi_history)}"))
+        layout.addWidget(QLabel(f"Total iterations: {len(chi_history)-1}"))
         layout.addWidget(QLabel(""))
         layout.addWidget(QLabel("To run more iterations:"))
         layout.addWidget(QLabel("1. Close this dialog"))

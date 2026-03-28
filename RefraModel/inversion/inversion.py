@@ -673,12 +673,19 @@ class Inversion:
             f.write("\nAbort Criteria:\n")
             if params['abort_chi2']:
                 f.write("   Chi² <= 1.0\n")
+            f.write(f"   Minimum d_RMS: {params['max_delta_phi']}%\n")
             f.write(f"   Maximum iterations: {params['max_iterations']}\n")
 
             f.write("\nSmoothing Parameters:\n")
             f.write(f"   Initial lambda: {params['initial_lambda']}\n")
             f.write(f"   Lambda reduction factor: {params['lambda_reduction']}\n")
             f.write(f"   Z-direction smoothing: {params['z_smoothing']}\n")
+            if params["anisotropic"]:
+                f.write("   Use anisotropic smoothing:\n")
+                f.write("      Horizontal correlation: "
+                        f"{params['horizontal_correlation']}\n")
+                f.write("      Vertical correlation:   "
+                        f"{params['vertical_correlation']}\n")
 
             f.write("\nVelocity Constraints:\n")
             f.write(f"   Minimum velocity: {params['min_velocity']} m/s\n")
@@ -761,12 +768,13 @@ class Inversion:
 
 # Plot chi2 evolution
         chi_history = np.log10(np.array(self.mgr.inv.chi2History))
-        iterations = np.arange(len(chi_history)) + 1
+        iterations = np.arange(len(chi_history))
 
         ax_chi.plot(iterations, chi_history, 'b-o', markersize=4)
         ax_chi.set_ylabel("log₁₀(Chi²)")
         ax_chi.set_xlabel("Iteration #")
         ax_chi.set_title("Convergence")
+        ax_chi.set_xlim(0, len(chi_history)-1)
         ax_chi.grid(True, alpha=0.3)
         if hasattr(self, 'inversion_folder') and self.inversion_folder:
             fig.savefig(os.path.join(self.inversion_folder,

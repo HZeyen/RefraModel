@@ -340,12 +340,12 @@ class ModelBuilder(QMainWindow):
         """ Plot rays of the forward model"""
         if hasattr(self, 'forward_model') and self.forward_model:
             try:
-                if self.forward_model.new_forward:
-                    QMessageBox.information(
-                        self, "Ray calculation",
-                        "Attention, calculating rays for forward model may "
-                        "take a minute or so.", QMessageBox.Ok)
-                    print("\nCalculate rays for forward model")
+                # if self.forward_model.new_forward:
+                #     QMessageBox.information(
+                #         self, "Ray calculation",
+                #         "Attention, calculating rays for forward model may "
+                #         "take a minute or so.", QMessageBox.Ok)
+                #     print("\nCalculate rays for forward model")
 
                 nrays = 0
                 for r in rays:
@@ -999,26 +999,29 @@ class ModelBuilder(QMainWindow):
 
 # Set xlim to match full extent (sensors + model range)
         try:
-            xmin_plot = self.xmin
-            xmax_plot = self.xmax
+            self.xmin_plot = self.xmin
+            self.xmax_plot = self.xmax
 
 # Also consider sensor positions if scheme exists
             if self.scheme is not None:
                 sensors = self.scheme.sensors().array()
-                xmin_plot = min(xmin_plot, np.min(sensors[:, 0]))
-                xmax_plot = max(xmax_plot, np.max(sensors[:, 0]))
+                self.xmin_plot = min(self.xmin_plot, np.min(sensors[:, 0]))
+                self.xmax_plot = max(self.xmax_plot, np.max(sensors[:, 0]))
                 
-            ax.set_xlim(xmin_plot, xmax_plot)
+            ax.set_xlim(self.xmin_plot, self.xmax_plot)
             ax.set_ylim(self.ymin_data, self.ymax_data)
-            ymx = self.ymax_data+(self.ymax_data-self.ymin_data)*0.01
-            ax.text(xmin_plot, ymx, self.dir_start, horizontalalignment="left",
-                    verticalalignment="bottom", fontsize=14)
-            ax.text(xmax_plot, ymx, self.dir_end, horizontalalignment="right",
-                    verticalalignment="bottom", fontsize=14)
+            self.direction_plot(ax)
         except Exception:
             pass
         
         self.canvas.draw_idle()
+
+    def direction_plot(self, ax):
+        ymx = self.ymax_data+(self.ymax_data-self.ymin_data)*0.01
+        ax.text(self.xmin_plot, ymx, self.dir_start, horizontalalignment="left",
+                verticalalignment="bottom", fontsize=14)
+        ax.text(self.xmax_plot, ymx, self.dir_end, horizontalalignment="right",
+                verticalalignment="bottom", fontsize=14)
 
     def plot_calculated_times(self, response):
         """Plot calculated travel times as continuous lines with same colors as measured picks."""
@@ -1644,7 +1647,8 @@ class ModelBuilder(QMainWindow):
 # Modify existing line to (a -> pnew)
         line["point2"] = pnew
 # Append new line (pnew -> b)
-        self.line_manager.append_line(pnew, b, body=line.get("bodies", []).copy())
+        self.line_manager.append_line(pnew, b, self.point_manager,
+                                      body=line.get("bodies", []).copy())
         new_lin_idx = self.line_manager.nline
 # Update point-line references
         if lin_idx not in self.point_manager.points[a]["lines"]:
@@ -1817,7 +1821,8 @@ class ModelBuilder(QMainWindow):
 # For now, we'll create the line as other1->other2, but we may need to swap
 # based on body topology. We'll handle this when updating body line lists.
             bodies = list(set(l1.get("bodies", []) + l2.get("bodies", [])))
-            self.line_manager.append_line(other1, other2, body=bodies)
+            self.line_manager.append_line(other1, other2, self.point_manager,
+                                          body=bodies)
             new_line_idx = self.line_manager.nline
 # Remove old lines from all point references first
             for pt in self.point_manager.points:
@@ -1857,7 +1862,9 @@ class ModelBuilder(QMainWindow):
                             other2 = l2["point1"] if l2["point2"] == pid else l2["point2"]
 # Create merged line
                             bodies = list(set(l1.get("bodies", []) + l2.get("bodies", [])))
-                            self.line_manager.append_line(other1, other2, body=bodies)
+                            self.line_manager.append_line(other1, other2,
+                                                          self.point_manager, 
+                                                          body=bodies)
                             new_line_idx = self.line_manager.nline
 # Determine correct sense for merged line
                             merged_line = self.line_manager.lines[new_line_idx]
@@ -2428,7 +2435,7 @@ class ModelBuilder(QMainWindow):
 # Add a new line
                 self.line_manager.append_line(self.point_manager.npoint,
                                  self.line_manager.lines[line]["point2"],
-                                 body=[])
+                                 self.point_manager, body=[])
                 self.line_manager.lines[line]["point2"] = self.point_manager.npoint
                 self.point_manager.points[-1]["lines"].append(self.point_manager.npoint)
                 for nb, body in enumerate(self.body_manager.bodies):
@@ -2497,8 +2504,9 @@ class ModelBuilder(QMainWindow):
                                        self.line_manager.lines[lin2]["point2"]]):
                                 pt2 = ip
                                 b1 = not b1
-                                self.line_manager.append_line(pt1, pt2,
-                                                 [nb, self.body_manager.nbody])
+                                self.line_manager.append_line(
+                                    pt1, pt2, self.point_manager,
+                                    [nb, self.body_manager.nbody])
                                 if (self.body_manager.nbody not in
                                         self.point_manager.points[pt1]["bodies"]):
                                     self.point_manager.points[pt1]["bodies"].append(
@@ -2656,7 +2664,8 @@ class ModelBuilder(QMainWindow):
 # Create new split line connecting the first and last crossing points
         p_start = crossing_pids[0]
         p_end = crossing_pids[1]
-        self.line_manager.append_line(p_start, p_end, body=[])
+        self.line_manager.append_line(p_start, p_end, self.point_manager,
+                                      body=[])
         split_line_idx = self.line_manager.nline
 # Update point-line references
         self.point_manager.points[p_start]["lines"].append(split_line_idx)
