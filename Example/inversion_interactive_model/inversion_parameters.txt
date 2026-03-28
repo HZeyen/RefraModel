@@ -1,0 +1,18 @@
+INVERSION PARAMETERS
+==================================================
+
+Starting Model:
+   Actual geological model
+
+Abort Criteria:
+   Chi² <= 1.0
+   Maximum iterations: 10
+
+Smoothing Parameters:
+   Initial lambda: 200.0
+   Lambda reduction factor: 0.7
+   Z-direction smoothing: 0.2
+
+Velocity Constraints:
+   Minimum velocity: 200.0 m/s
+   Maximum velocity: 6000.0 m/s

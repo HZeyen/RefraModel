@@ -1,0 +1,21 @@
+INVERSION PARAMETERS
+==================================================
+
+Starting Model:
+   Gradient model
+      v_top: 200.0 m/s
+      v_bottom: 4000.0 m/s
+
+Abort Criteria:
+   Chi² <= 1.0
+   Minimum d_RMS: 2.0%
+   Maximum iterations: 15
+
+Smoothing Parameters:
+   Initial lambda: 200.0
+   Lambda reduction factor: 0.7
+   Z-direction smoothing: 0.2
+
+Velocity Constraints:
+   Minimum velocity: 200.0 m/s
+   Maximum velocity: 6000.0 m/s
