@@ -221,6 +221,8 @@ class ModelBuilder(QMainWindow):
 
         if self.statusBar():
             self.statusBar().clearMessage()
+        self.hide_overlay_message()
+
 
 # Run inversion with body regularization settings
         if proceed:

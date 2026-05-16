@@ -238,7 +238,7 @@ def main():
                     picks_defaults["ymax"] = 0.0
                     
                     # Y_min based on depth from lowest topography point
-                    topo_min = ytopo_for_model.min()  # Most negative (deepest) topography
+                    topo_min = ytopo_for_model.min()  # Most negative (highest) topography
                     depth_extent = (picks_defaults["xmax"] - picks_defaults["xmin"]) * 0.3
                     picks_defaults["ymin"] = float(round(topo_min - depth_extent))
             else:

@@ -13,7 +13,7 @@ from RefraModel import main
 def main():
     """Main entry point for standalone script"""
     # Set your default working directory here
-    dir0 = r"C:\Sources_2010\Python_programs\RefraModel\Example"
+    dir0 = r"E:\Seg2Dat\RefraModel_test"
     if os.path.exists(dir0):
         os.chdir(dir0)
         print(f"start_reframodel.py: Changed to working directory: {dir0}")

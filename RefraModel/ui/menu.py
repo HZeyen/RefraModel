@@ -658,7 +658,7 @@ class Menu:
             QApplication.processEvents()
 # Use timer to delay inversion start slightly to ensure message is gone
             QTimer.singleShot(
-                50,lambda: self._finish_body_regularization_mode(proceed=True))
+                100,lambda: self._finish_body_regularization_mode(proceed=True))
 # Cancel
         elif event.key == 'escape':
             self._finish_body_regularization_mode(proceed=False)
@@ -679,6 +679,7 @@ class Menu:
             delattr(self.parent, '_body_reg_key_cid')
 
         self.parent._body_reg_mode = False
+
 
         if hasattr(self.parent, "statusBar"):
             self.parent.statusBar().clearMessage()

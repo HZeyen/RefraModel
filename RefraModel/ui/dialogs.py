@@ -343,7 +343,7 @@ class InversionParametersDialog(QDialog):
         'initial_lambda': 200.0,
         'lambda_reduction': 0.7,
         'z_smoothing': 0.2,
-        'velocity_limit_percent': 50.0,
+        'velocity_limit_percent': 0.0,
     }
 
     def __init__(self, parent=None):
@@ -712,7 +712,7 @@ class BodyRegularizationDialog(QDialog):
         params_layout.addRow("Maximum velocity [m/s]:", self.vmax_edit)
 
 # Velocity variation limit (for free mode only)
-        self.velocity_limit_edit = QLineEdit("50.0")
+        self.velocity_limit_edit = QLineEdit("0.0")
         self.velocity_limit_edit.setValidator(QDoubleValidator(0.0, 100.0, 1))
         self.velocity_limit_edit.setToolTip(
             "Override the percentage from main dialog for this specific body."
@@ -768,9 +768,9 @@ class BodyRegularizationDialog(QDialog):
             self.vmin_edit.setEnabled(False)
             self.vmax_edit.setEnabled(False)
             self.velocity_limit_edit.setEnabled(True)
-# Set default to 50% (matching main dialog default)
+# Set default to 0% (matching main dialog default)
             if self.velocity_limit_edit.text() == "0.0":
-                self.velocity_limit_edit.setText("50.0")
+                self.velocity_limit_edit.setText("0.0")
         elif self.single_radio.isChecked():
             self.params_group.setVisible(True)
             self.velocity_edit.setEnabled(True)
